@@ -27,47 +27,36 @@ const WRAPPED_ADDR = new Set(
     "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
     "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
     "0x0000000000000000000000000000000000000000",
-    "7vfaxb2d5fxanxiy7iqk2p2oq5jkp1x",
-    "9n4nbm81irjyq73aswtchha7xm6p5x8bz4y6awm9fhwt",
-    "3nz9jfvxfp2dluohzcrftnuwwjjt5c2wkh96s4trd092",
+    "pumpcmxqmfrsakq5r49wcjnraryyrqmxz6ae8h7h9dfn",
   ].map((s) => s.toLowerCase()),
 );
 
 const WRAPPED_SYM = new Set(
   [
-    "WSOL",
-    "WETH",
-    "WBNB",
-    "WBTC",
-    "WBTCb",
-    "BTCB",
-    "WETH.e",
-    "WBTC.e",
-    "cbETH",
-    "wstETH",
-    "weETH",
-    "rETH",
-    "WMON",
-    "WAVAX",
-    "WMATIC",
-    "WFTM",
-    "WSUI",
-    "WBERA",
-    "SOL",
-    "ETH",
-    "BNB",
-    "BTC",
+    "WSOL", "WETH", "WBNB", "WBTC", "WBTCb", "BTCB", "WETH.e", "WBTC.e",
+    "cbETH", "wstETH", "weETH", "rETH", "WMON", "WAVAX", "WMATIC", "WFTM",
+    "WSUI", "WBERA", "SOL", "ETH", "BNB", "BTC", "USDC", "USDT", "USD1",
   ].map((s) => s.toUpperCase()),
 );
+
+const JUNK_SYM = /^(pump|pumpfun|sol|wsol|usdc|usdt|eth|weth|bnb|wbnb|btc|wbtc)$/i;
+const MAX_ALERT_MCAP = 25_000_000;
 
 export function isWrappedBase(token: string, symbol?: string, name?: string) {
   const addr = token.trim().toLowerCase();
   if (WRAPPED_ADDR.has(addr)) return true;
   const sym = (symbol || "").replace(/^\$/, "").trim().toUpperCase();
   if (sym && WRAPPED_SYM.has(sym)) return true;
+  if (JUNK_SYM.test(sym)) return true;
   const label = `${sym} ${name || ""}`.toUpperCase();
   if (/\bWRAPPED\s+(SOL|ETH|BNB|BTC|BITCOIN|ETHER|MONAD)\b/.test(label)) return true;
   if (/^W(SOL|ETH|BNB|BTC|MON|AVAX|MATIC|FTM|SUI|BERA)$/.test(sym)) return true;
+  return false;
+}
+
+export function skipAlertToken(row: { token: string; symbol?: string; name?: string; mcap?: number | null }) {
+  if (isWrappedBase(row.token, row.symbol, row.name)) return true;
+  if (row.mcap && row.mcap > MAX_ALERT_MCAP) return true;
   return false;
 }
 
@@ -157,7 +146,7 @@ export function clusterHits(tape: TapeFill[], windowMin: number, minUsd: number,
   const bag = new Map<string, AlertHit & { seen: Set<string> }>();
   for (const row of tape) {
     if (row.side !== "buy" || row.ts < since) continue;
-    if (isWrappedBase(row.token, row.symbol, row.name)) continue;
+    if (skipAlertToken(row)) continue;
     const key = `${row.chain}:${row.token.toLowerCase()}`;
     const prev =
       bag.get(key) ||
@@ -188,6 +177,7 @@ export function clusterHits(tape: TapeFill[], windowMin: number, minUsd: number,
     bag.set(key, prev);
   }
   return [...bag.values()]
-    .filter((row) => row.usd >= minUsd && row.buys >= minBuys)
+    .filter((row) => row.usd >= minUsd && row.buys >= minBuys && (row.handles || []).length >= 2)
+    .filter((row) => !row.mcap || row.mcap <= MAX_ALERT_MCAP)
     .map(({ seen: _s, ...rest }) => rest);
 }
