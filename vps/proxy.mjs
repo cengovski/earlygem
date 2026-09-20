@@ -5,7 +5,7 @@ import http from "node:http";
 const PORT = Number(process.env.PORT || 8787);
 const PULSE = "https://fomopulse.app";
 const GMGN = "https://openapi.gmgn.ai";
-const KEY = process.env.GMGN_API_KEY || "gmgn_solbscbaseethmonadtron";
+const KEY = process.env.GMGN_API_KEY || "";
 const ALLOW = new Set([
   "/api/status",
   "/api/traders",
@@ -55,6 +55,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (path === "/api/gmgn/activity" && req.method === "POST") {
+      if (!KEY) {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "GMGN_API_KEY missing" }));
+        return;
+      }
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");

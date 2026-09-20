@@ -11,8 +11,11 @@
 *.pem
 npm-debug.log*
 .env
-.env.local
-.env.production
+.env.*
 !.env.example
 .vercel
 *.tsbuildinfo
+bf.txt
+bnnapi.txt
+*.key
+secrets/
