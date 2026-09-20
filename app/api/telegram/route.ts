@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { alertKeyboard, formatAlertHtml, isWrappedBase, type AlertHit } from "@/lib/alert-msg";
 import { requireSecret } from "@/lib/auth";
+import { hydrateHit } from "@/lib/dexmeta";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 import type { ChainId } from "@/lib/types";
 
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
   if (isWrappedBase(token, body?.symbol, body?.name)) {
     return NextResponse.json({ ok: true, skipped: true, reason: "wrapped" });
   }
-  const hit: AlertHit = {
+  const hit = await hydrateHit({
     token,
     chain,
     symbol: body?.symbol || "???",
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     liquidity: body?.liquidity ?? null,
     change24: body?.change24 ?? null,
     handles: body?.handles || [],
-  };
+  });
   const sent = await sendTelegram(formatAlertHtml(hit), `${chain}:${token.toLowerCase()}`, {
     html: true,
     keyboard: alertKeyboard(chain, token),
