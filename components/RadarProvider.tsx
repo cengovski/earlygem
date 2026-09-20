@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { markFeeds } from "@/lib/health";
 import { recentLogs, type LogEvent } from "@/lib/log";
 import { fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
@@ -41,6 +42,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
       .then((next) => {
         if (!alive) return;
         setBundle(next);
+        markFeeds(next.tape, next.traders);
         fireTapeAlerts(next.tape.slice(0, 200)).catch(() => null);
       })
       .catch(() => undefined)
