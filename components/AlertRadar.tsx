@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { isWrappedBase } from "@/lib/alert-msg";
 import { usd } from "@/lib/format";
 import type { TapeFill } from "@/lib/types";
@@ -50,6 +50,9 @@ function near(tape: TapeFill[], rule: AlertRule): Row[] {
 
 export function AlertRadar({ tape }: { tape: TapeFill[] }) {
   const [rule, setRule] = useState<AlertRule>({ windowMin: 10, minUsd: 1000, minBuys: 5 });
+  const [status, setStatus] = useState<Record<string, string>>({});
+  const sent = useRef(new Set<string>());
+
   useEffect(() => {
     fetch("/api/alert-rule", { cache: "no-store" })
       .then((r) => r.json())
@@ -58,7 +61,62 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
       })
       .catch(() => undefined);
   }, []);
+
   const rows = useMemo(() => near(tape, rule), [tape, rule]);
+
+  useEffect(() => {
+    const ready = rows.filter((row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2);
+    const fresh = ready.filter((row) => !sent.current.has(row.key));
+    if (!fresh.length) return;
+    let cancel = false;
+    setStatus((prev) => {
+      const next = { ...prev };
+      for (const row of fresh) next[row.key] = "tg…";
+      return next;
+    });
+    fetch("/api/alert-fire", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        hits: fresh.map((row) => ({
+          token: row.token,
+          chain: row.chain,
+          symbol: row.symbol,
+          usd: row.usd,
+          buys: row.buys,
+          windowMin: rule.windowMin,
+          handles: row.handles,
+        })),
+      }),
+    })
+      .then(async (res) => {
+        const json = (await res.json()) as { ok?: boolean; sent?: number; skipped?: number; error?: string };
+        if (cancel) return;
+        setStatus((prev) => {
+          const next = { ...prev };
+          for (const row of fresh) {
+            if (!res.ok) next[row.key] = json.error || `tg ${res.status}`;
+            else if ((json.sent || 0) + (json.skipped || 0) > 0) {
+              sent.current.add(row.key);
+              next[row.key] = json.sent ? "tg ✓" : "tg bekler";
+            } else next[row.key] = "tg yok";
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        if (cancel) return;
+        setStatus((prev) => {
+          const next = { ...prev };
+          for (const row of fresh) next[row.key] = "tg hata";
+          return next;
+        });
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [rows, rule]);
+
   return (
     <aside className="w-full shrink-0 rounded-xl border border-line bg-surface lg:w-72">
       <div className="border-b border-line px-3 py-2">
@@ -84,6 +142,7 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
                 <p className="mt-0.5 font-mono text-xs">
                   {usd(row.usd)} · {row.buys} alım
                   {ready ? <span className="ml-2 text-[#7dff8a]">eşik</span> : null}
+                  {status[row.key] ? <span className="ml-2 text-mute">{status[row.key]}</span> : null}
                 </p>
                 {row.handles.length ? (
                   <p className="truncate text-[11px] text-mute">@{row.handles.slice(0, 3).join(" @")}</p>
