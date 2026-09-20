@@ -33,11 +33,11 @@ export function scoreGem(input: {
 
   if (kols.length) {
     score += Math.min(42, kols.length * 14);
-    reasons.push(`${kols.length} KOL cüzdan`);
+    reasons.push(`${kols.length} KOL alım`);
   }
   if (smarts.length) {
     score += Math.min(28, smarts.length * 8);
-    reasons.push(`${smarts.length} smart cüzdan`);
+    reasons.push(`${smarts.length} smart alım`);
   }
   if (watched.length >= 5) {
     score += 10;
@@ -49,15 +49,14 @@ export function scoreGem(input: {
   const best = input.bestRank ?? (watched.length ? Math.min(...watched.map((b) => b.rank || 999)) : null);
   if (best != null && best <= 10) {
     score += 12;
-    reasons.push(`rank #${best} içeride`);
+    reasons.push(`rank #${best} aldı`);
   } else if (best != null && best <= 25) {
     score += 6;
-    reasons.push(`top 25 içeride`);
+    reasons.push(`top 25 aldı`);
   }
 
   if (watched[0]) {
-    const names = watched.slice(0, 3).map((b) => `@${b.handle}`);
-    reasons.push(names.join(" "));
+    reasons.push(watched.slice(0, 3).map((b) => `@${b.handle}`).join(" "));
   }
 
   const lastSmart = input.lastSmartTs
@@ -105,9 +104,7 @@ export function scoreGem(input: {
     reasons.push("erken değil / büyük cap");
   }
 
-  if (input.buyers >= 12 && watched.length) {
-    score += 6;
-  }
+  if (input.buyers >= 12 && watched.length) score += 6;
 
   const sold = input.soldUsd || 0;
   const bought = input.boughtUsd || 0;
@@ -119,14 +116,11 @@ export function scoreGem(input: {
     reasons.push("dağıtıyorlar");
   }
 
-  if (input.liquidity != null && input.liquidity >= 15_000 && input.liquidity < 600_000) {
-    score += 5;
-  }
+  if (input.liquidity != null && input.liquidity >= 15_000 && input.liquidity < 600_000) score += 5;
   if (input.liquidity != null && input.liquidity < 2500) {
     score -= 22;
     reasons.push("ölü havuz");
   }
-
   if (input.isStock) {
     score -= 45;
     reasons.push("hisse / stock");
@@ -135,14 +129,12 @@ export function scoreGem(input: {
     score -= 16;
     reasons.push("wash şüphesi");
   }
-
   if (input.dexOnly && watched.length === 0) {
     score = Math.min(score, 38);
     reasons.push("FOMO cüzdanı yok");
   }
 
-  const unique = [...new Set(reasons)];
-  return { score: Math.max(0, Math.min(99, Math.round(score))), reasons: unique.slice(0, 5) };
+  return { score: Math.max(0, Math.min(99, Math.round(score))), reasons: [...new Set(reasons)].slice(0, 5) };
 }
 
 export function rankGems(gems: Gem[]): Gem[] {
@@ -154,7 +146,6 @@ export function rankGems(gems: Gem[]): Gem[] {
 }
 
 export function featuredGems(gems: Gem[], n = 6): Gem[] {
-  const watched = gems.filter((g) => !g.isStock && (g.kolCount + g.smartCount >= 1 || (g.chain === "robinhood" && g.buyers >= 4 && g.score >= 42)));
-  const pool = watched.length >= 3 ? watched : gems.filter((g) => !g.isStock && g.score >= 40);
-  return rankGems(pool).slice(0, n);
+  const watched = gems.filter((g) => !g.isStock && g.kolCount + g.smartCount >= 1 && g.lastSmartTs != null);
+  return rankGems(watched).slice(0, n);
 }

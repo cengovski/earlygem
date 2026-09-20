@@ -1,14 +1,10 @@
 import { featuredGems, rankGems } from "./score";
 import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
-import {
-  fetchPulseGems,
-  fetchPulseStatus,
-  fetchPulseTape,
-  fetchPulseTraders,
-} from "./sources";
+import { fetchPulseGems, fetchPulseStatus, fetchPulseTape, fetchPulseTraders } from "./sources";
 import { fetchSolWatch } from "./dexwatch";
 import { logEvent } from "./log";
 import { clearSnapshot, lastSnapshot, readSnapshot, writeSnapshot, type RadarBundle, type RadarMeta } from "./store";
+import { gemsFromSwaps, isSwapFill } from "./trades";
 import type { TapeFill, Trader } from "./types";
 
 const FRESH_MS = 25_000;
@@ -17,7 +13,7 @@ const STALE_MS = 8 * 60_000;
 function tradersFromTape(tape: TapeFill[]): Trader[] {
   const byHandle = new Map<string, TapeFill[]>();
   for (const row of tape) {
-    if (!row.handle) continue;
+    if (!row.handle || !isSwapFill(row)) continue;
     const key = row.handle.toLowerCase();
     const bag = byHandle.get(key) || [];
     bag.push(row);
@@ -86,7 +82,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
       errors.push(`discover:${e instanceof Error ? e.message : "fail"}`);
       return [];
     }),
-    fetchPulseTape(160).catch((e) => {
+    fetchPulseTape(280).catch((e) => {
       errors.push(`tape:${e instanceof Error ? e.message : "fail"}`);
       return [] as TapeFill[];
     }),
@@ -115,7 +111,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   if (!discoverSeed.length) errors.push("pulse_discover_empty");
 
   const index = traderIndex(traders);
-  const tape = tapeRaw.map((row) => ({
+  const tape = tapeRaw.filter(isSwapFill).map((row) => ({
     ...row,
     smartKind:
       row.smartKind ||
@@ -133,7 +129,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
           }).kind
         : null),
   }));
-  const gems = rankGems(discoverSeed.filter((g) => !g.isStock));
+  const gems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
   const featured = featuredGems(gems, 6);
   const smartTape = tape.filter((r) => isWatchedKind(r.smartKind)).slice(0, 40);
   const bundle: RadarBundle = { traders, tape, gems, featured, smartTape, dexWatch, status };
