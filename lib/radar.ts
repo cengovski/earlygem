@@ -5,7 +5,6 @@ import { attachGmgnSecurity } from "./scan";
 import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
 import { fetchPulseGems, fetchPulseStatus, fetchPulseTape, fetchPulseTraders } from "./sources";
 import { fetchSolWatch } from "./dexwatch";
-import { fetchGmgnWalletTape } from "./gmgn";
 import { fetchExternalFeeds, mergeTraders } from "./feeds";
 import { logEvent } from "./log";
 import { attachSolana } from "./solmap";
@@ -122,19 +121,6 @@ async function withTimeout<T>(job: Promise<T>, ms: number, fallback: T): Promise
   ]);
 }
 
-async function loadFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
-  if (typeof window !== "undefined") {
-    try {
-      const res = await fetch("/api/gmgn-feed", { cache: "no-store", signal: AbortSignal.timeout(12_000) });
-      if (!res.ok) return { fills: [], traders: [] };
-      return (await res.json()) as { fills: TapeFill[]; traders: Trader[] };
-    } catch {
-      return { fills: [], traders: [] };
-    }
-  }
-  return fetchExternalFeeds();
-}
-
 export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<RadarBundle & { meta: RadarMeta }> {
   if (!opts?.force) {
     const fresh = readSnapshot(FRESH_MS);
@@ -187,7 +173,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
       (row.handle ? index.get(row.handle.toLowerCase())?.kind || null : null),
   }));
 
-  const [feeds] = await Promise.all([withTimeout(loadFeeds(), 14_000, { fills: [] as TapeFill[], traders: [] as Trader[] })]);
+  const feeds = await withTimeout(fetchExternalFeeds(), 14_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
   traders = mergeTraders(traders, feeds.traders);
   const solTape = feeds.fills.filter(keepFill).sort((a, b) => b.ts - a.ts);
   const solGems = gemsFromSolTape(solTape);
