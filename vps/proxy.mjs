@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-/** Tiny pulse + GMGN proxy for the RackNerd box. */
 import http from "node:http";
 
 const PORT = Number(process.env.PORT || 8787);
 const PULSE = "https://fomopulse.app";
 const GMGN = "https://openapi.gmgn.ai";
 const KEY = process.env.GMGN_API_KEY || "";
+const GATE = process.env.APP_SECRET || "";
+const ORIGIN = process.env.APP_ORIGIN || "https://earlygem-live.vercel.app";
 const ALLOW = new Set([
   "/api/status",
   "/api/traders",
@@ -18,21 +19,26 @@ const ALLOW = new Set([
 ]);
 
 function cors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Origin", ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, X-APIKEY");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization");
+}
+
+function gated(req) {
+  if (!GATE) return false;
+  const auth = req.headers.authorization || "";
+  return auth === `Bearer ${GATE}`;
 }
 
 function pathOnly(url) {
-  const u = new URL(url, "http://local");
-  return u.pathname;
+  return new URL(url, "http://local").pathname;
 }
 
 async function relayPulse(reqUrl) {
   const u = new URL(reqUrl, PULSE);
   const dest = `${PULSE}${u.pathname}${u.search}`;
   const res = await fetch(dest, {
-    headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 earlygem-vps" },
+    headers: { Accept: "application/json", "User-Agent": "earlygem-worker" },
     signal: AbortSignal.timeout(12_000),
   });
   const text = await res.text();
@@ -51,7 +57,12 @@ const server = http.createServer(async (req, res) => {
   try {
     if (path === "/health") {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, ip: "107.175.85.233", pulse: PULSE }));
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (!gated(req)) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "unauthorized" }));
       return;
     }
     if (path === "/api/gmgn/activity" && req.method === "POST") {
@@ -90,11 +101,6 @@ const server = http.createServer(async (req, res) => {
       }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, count: rows.length, rows }));
-      return;
-    }
-    if (!ALLOW.has(path) && !path.startsWith("/api/")) {
-      res.writeHead(404, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "not_found" }));
       return;
     }
     if (!ALLOW.has(path)) {
