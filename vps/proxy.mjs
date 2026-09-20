@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
 
 const PORT = Number(process.env.PORT || 8787);
 const PULSE = "https://fomopulse.app";
@@ -50,7 +51,7 @@ function writeSettings(row) {
     minUsd: Math.max(100, Number(row.minUsd) || 1000),
     minBuys: Math.max(1, Math.min(50, Number(row.minBuys) || 5)),
   };
-  fs.mkdirSync(new URL("./" , `file://${SETTINGS_FILE}`).pathname.replace(/[^/]+$/, "") || "/opt/earlygem-proxy", { recursive: true });
+  fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(next));
   return next;
 }
@@ -80,9 +81,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   const url = req.url || "/";
-  const path = pathOnly(url);
+  const pathName = pathOnly(url);
   try {
-    if (path === "/health") {
+    if (pathName === "/health") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, settings: fs.existsSync(SETTINGS_FILE) }));
       return;
@@ -92,19 +93,19 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: "unauthorized" }));
       return;
     }
-    if (path === "/api/settings" && req.method === "GET") {
+    if (pathName === "/api/settings" && req.method === "GET") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(readSettings()));
       return;
     }
-    if (path === "/api/settings" && req.method === "PUT") {
+    if (pathName === "/api/settings" && req.method === "PUT") {
       const body = await readBody(req);
       const next = writeSettings(body);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, ...next }));
       return;
     }
-    if (path === "/api/gmgn/activity" && req.method === "POST") {
+    if (pathName === "/api/gmgn/activity" && req.method === "POST") {
       if (!KEY) {
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "GMGN_API_KEY missing" }));
@@ -140,7 +141,7 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: true, count: rows.length, rows }));
       return;
     }
-    if (!ALLOW.has(path)) {
+    if (!ALLOW.has(pathName)) {
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "not_found" }));
       return;
