@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { isWrappedBase } from "@/lib/alert-msg";
 import { usd } from "@/lib/format";
 import type { TapeFill } from "@/lib/types";
 import type { AlertRule } from "@/lib/watch";
+
+const LOCK_MS = 50 * 60_000;
+const LOCK_KEY = "eg_tg_lock";
 
 type Row = {
   key: string;
@@ -15,6 +18,21 @@ type Row = {
   buys: number;
   handles: string[];
 };
+
+function readLock(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(LOCK_KEY) || "{}") as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+function writeLock(map: Record<string, number>) {
+  const now = Date.now();
+  const next: Record<string, number> = {};
+  for (const [k, ts] of Object.entries(map)) if (now - ts < LOCK_MS) next[k] = ts;
+  localStorage.setItem(LOCK_KEY, JSON.stringify(next));
+}
 
 function near(tape: TapeFill[], rule: AlertRule): Row[] {
   const since = Date.now() - rule.windowMin * 60_000;
@@ -51,7 +69,6 @@ function near(tape: TapeFill[], rule: AlertRule): Row[] {
 export function AlertRadar({ tape }: { tape: TapeFill[] }) {
   const [rule, setRule] = useState<AlertRule>({ windowMin: 10, minUsd: 1000, minBuys: 5 });
   const [status, setStatus] = useState<Record<string, string>>({});
-  const sent = useRef(new Set<string>());
 
   useEffect(() => {
     fetch("/api/alert-rule", { cache: "no-store" })
@@ -65,9 +82,17 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
   const rows = useMemo(() => near(tape, rule), [tape, rule]);
 
   useEffect(() => {
+    const lock = readLock();
     const ready = rows.filter((row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2);
-    const fresh = ready.filter((row) => !sent.current.has(row.key));
-    if (!fresh.length) return;
+    const fresh = ready.filter((row) => !lock[row.key] || Date.now() - lock[row.key] > LOCK_MS);
+    if (!fresh.length) {
+      setStatus((prev) => {
+        const next = { ...prev };
+        for (const row of ready) if (lock[row.key]) next[row.key] = "tg kilit";
+        return next;
+      });
+      return;
+    }
     let cancel = false;
     setStatus((prev) => {
       const next = { ...prev };
@@ -90,19 +115,19 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
       }),
     })
       .then(async (res) => {
-        const json = (await res.json()) as { ok?: boolean; sent?: number; skipped?: number; error?: string };
+        const json = (await res.json()) as { sent?: number; skipped?: number; error?: string };
         if (cancel) return;
+        const map = readLock();
+        const now = Date.now();
         setStatus((prev) => {
           const next = { ...prev };
           for (const row of fresh) {
-            if (!res.ok) next[row.key] = json.error || `tg ${res.status}`;
-            else if ((json.sent || 0) + (json.skipped || 0) > 0) {
-              sent.current.add(row.key);
-              next[row.key] = json.sent ? "tg ✓" : "tg bekler";
-            } else next[row.key] = "tg yok";
+            map[row.key] = now;
+            next[row.key] = !res.ok ? json.error || `tg ${res.status}` : (json.sent || 0) > 0 ? "tg ✓" : "tg kilit";
           }
           return next;
         });
+        writeLock(map);
       })
       .catch(() => {
         if (cancel) return;
