@@ -1,4 +1,5 @@
 import { KNOWN_WALLETS, normalizeHandle } from "./known";
+import { logEvent } from "./log";
 import { featuredGems, rankGems, scoreGem } from "./score";
 import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
 import type { ChainId, FindResult, Gem, GemBuyer, PulseStatus, SmartKind, TapeFill, Trader } from "./types";
@@ -6,19 +7,28 @@ import type { ChainId, FindResult, Gem, GemBuyer, PulseStatus, SmartKind, TapeFi
 const PULSE = "https://fomopulse.app";
 const DEX = "https://api.dexscreener.com";
 const FOMOAPI = "https://api.fomoapi.io";
-
 const JUNK_SYMBOL = new Set(["sol", "wsol", "usdc", "usdt", "eth", "weth", "bnb", "wbnb", "btc", "wbtc", "pump", "pumpfun"]);
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+  const started = Date.now();
   try {
     const res = await fetch(url, {
       ...init,
+      cache: "no-store",
       headers: { Accept: "application/json", "User-Agent": "earlygem-radar/0.2", ...(init?.headers || {}) },
-      next: { revalidate: 20 },
+      signal: init?.signal ?? AbortSignal.timeout(12_000),
     });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
+    const ms = Date.now() - started;
+    if (!res.ok) {
+      logEvent({ level: "warn", event: "fetch", outcome: "denied", status: res.status, url, ms, detail: res.statusText });
+      return null;
+    }
+    const data = (await res.json()) as T;
+    const count = Array.isArray(data) ? data.length : 1;
+    logEvent({ level: "info", event: "fetch", outcome: count ? "ok" : "empty", status: res.status, url, ms, count });
+    return data;
+  } catch (err) {
+    logEvent({ level: "error", event: "fetch", outcome: "error", url, ms: Date.now() - started, detail: err instanceof Error ? err.message : "fetch_failed" });
     return null;
   }
 }
@@ -30,23 +40,18 @@ type PulseFill = {
   liquidity: number | null; pair_url: string | null; pair_created_at: number | null; change24: number | null;
   market_cap: number | null; image_url: string | null; flags?: string[]; new_position?: number; is_stock?: number;
 };
-
 type PulseTrader = {
   handle: string; address: string; display_name: string; avatar_url: string | null; clan: string | null;
   followers: number; profile_url: string; fills: number; tape_volume: number; realized: number; unrealized: number;
   wins: number; trips: number; open_tokens: number; rank: number | null; last_ts: number | null;
 };
-
 type PulseBuyer = { handle: string; ts: number; usd: number; rank: number | null; avatar_url: string | null };
-
 type PulseDiscover = {
   token: string; symbol: string; name: string; image_url: string | null; price: number | null; liquidity: number | null;
   change24: number | null; volume24: number | null; market_cap: number | null; pair_created_at: number | null;
   pair_address: string | null; buyers: number; first_buyer: string | null; bought_usd: number; sold_usd: number;
-  buyers_list?: PulseBuyer[]; buyers_recent?: number; best_rank?: number | null; wash?: number; is_stock?: number;
-  last_fill_ts?: number | null;
+  buyers_list?: PulseBuyer[]; best_rank?: number | null; wash?: number; is_stock?: number; last_fill_ts?: number | null;
 };
-
 type PulseStatusRaw = {
   chain_id: number; wallets: number; trades: number; lag_seconds: number; latency_ms: number; last_block: number;
   source: string; overview?: { fills: number; volume: number; tokens: number; biggest_buy?: { usd: number; symbol: string; handle: string } };
@@ -70,11 +75,18 @@ function buyersFromList(list: PulseBuyer[] | undefined, traders: Map<string, Tra
     const kind = live?.kind ?? kindForHandle(b.handle, b.rank, live?.followers ?? 0, traders) ?? "active";
     out.push({ handle: b.handle, usd: b.usd || 0, ts: b.ts, rank: b.rank, followers: live?.followers ?? 0, kind, avatarUrl: b.avatar_url || live?.avatarUrl || null });
   }
-  return out.sort((a, b) => {
-    const wa = a.kind === "kol" ? 3 : a.kind === "smart" ? 2 : 1;
-    const wb = b.kind === "kol" ? 3 : b.kind === "smart" ? 2 : 1;
-    return wb - wa || (a.rank || 999) - (b.rank || 999);
-  });
+  return out.sort((a, b) => ((b.kind === "kol" ? 3 : b.kind === "smart" ? 2 : 1) - (a.kind === "kol" ? 3 : a.kind === "smart" ? 2 : 1)) || (a.rank || 999) - (b.rank || 999));
+}
+
+function mapPulseTrader(t: PulseTrader): Trader {
+  const tagged = classifyTrader({ handle: t.handle, followers: t.followers || 0, rank: t.rank, volume: t.tape_volume || 0, realized: t.realized || 0, unrealized: t.unrealized || 0, wins: t.wins || 0, trips: t.trips || 0, fills: t.fills || 0 });
+  return {
+    handle: t.handle, address: t.address, solana: KNOWN_WALLETS[t.handle.toLowerCase()]?.solana ?? null,
+    displayName: t.display_name || t.handle, avatarUrl: t.avatar_url, followers: t.followers || 0, clan: t.clan,
+    profileUrl: t.profile_url || `https://fomo.family/profile/${t.handle}`, fills: t.fills || 0, volume: t.tape_volume || 0,
+    realized: t.realized || 0, unrealized: t.unrealized || 0, wins: t.wins || 0, trips: t.trips || 0,
+    openTokens: t.open_tokens || 0, rank: t.rank, lastTs: t.last_ts, kind: tagged.kind, smartScore: tagged.smartScore, smartReasons: tagged.reasons,
+  };
 }
 
 export async function fetchPulseStatus(): Promise<PulseStatus | null> {
@@ -90,21 +102,33 @@ export async function fetchPulseStatus(): Promise<PulseStatus | null> {
 }
 
 export async function fetchPulseTraders(): Promise<Trader[]> {
-  const raw = await getJson<PulseTrader[]>(`${PULSE}/api/traders?limit=100`);
-  if (!raw) return [];
-  return raw.map((t) => {
-    const tagged = classifyTrader({
-      handle: t.handle, followers: t.followers || 0, rank: t.rank, volume: t.tape_volume || 0,
-      realized: t.realized || 0, unrealized: t.unrealized || 0, wins: t.wins || 0, trips: t.trips || 0, fills: t.fills || 0,
+  const raw = await getJson<PulseTrader[] | { traders?: PulseTrader[] }>(`${PULSE}/api/traders?limit=100`);
+  const list = Array.isArray(raw) ? raw : raw?.traders || [];
+  if (!list.length) {
+    logEvent({ level: "warn", event: "traders", outcome: "empty", url: `${PULSE}/api/traders` });
+    return [];
+  }
+  return list.filter((t) => t?.handle).map(mapPulseTrader);
+}
+
+function tradersFromTape(tape: TapeFill[]): Trader[] {
+  const byHandle = new Map<string, TapeFill[]>();
+  for (const row of tape) {
+    if (!row.handle) continue;
+    const key = row.handle.toLowerCase();
+    const bag = byHandle.get(key) || [];
+    bag.push(row);
+    byHandle.set(key, bag);
+  }
+  return [...byHandle.values()].map((rows) => {
+    const head = rows[0];
+    return mapPulseTrader({
+      handle: head.handle || "", address: head.wallet || "", display_name: head.handle || "", avatar_url: null, clan: null,
+      followers: head.followers || 0, profile_url: head.profileUrl || "", fills: rows.length,
+      tape_volume: rows.reduce((s, r) => s + (r.usd || 0), 0), realized: 0, unrealized: 0, wins: 0, trips: 0, open_tokens: 0,
+      rank: head.rank, last_ts: Math.max(...rows.map((r) => r.ts)),
     });
-    return {
-      handle: t.handle, address: t.address, solana: KNOWN_WALLETS[t.handle.toLowerCase()]?.solana ?? null,
-      displayName: t.display_name || t.handle, avatarUrl: t.avatar_url, followers: t.followers || 0, clan: t.clan,
-      profileUrl: t.profile_url || `https://fomo.family/profile/${t.handle}`, fills: t.fills || 0, volume: t.tape_volume || 0,
-      realized: t.realized || 0, unrealized: t.unrealized || 0, wins: t.wins || 0, trips: t.trips || 0,
-      openTokens: t.open_tokens || 0, rank: t.rank, lastTs: t.last_ts, kind: tagged.kind, smartScore: tagged.smartScore, smartReasons: tagged.reasons,
-    };
-  });
+  }).sort((a, b) => b.volume - a.volume);
 }
 
 function enrichFill(row: PulseFill, traders: Map<string, Trader>): TapeFill {
@@ -159,8 +183,7 @@ function gemFromDiscover(d: PulseDiscover, traders: Map<string, Trader>): Gem {
 export async function fetchPulseGems(traders?: Map<string, Trader>): Promise<Gem[]> {
   const raw = await getJson<PulseDiscover[]>(`${PULSE}/api/discover?limit=80`);
   if (!raw) return [];
-  const index = traders ?? traderIndex(await fetchPulseTraders());
-  return raw.map((d) => gemFromDiscover(d, index));
+  return raw.map((d) => gemFromDiscover(d, traders ?? traderIndex(await fetchPulseTraders())));
 }
 
 type DexPair = {
@@ -180,10 +203,7 @@ function isJunkPair(p: DexPair): boolean {
   const sym = symbol.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!symbol || JUNK_SYMBOL.has(sym)) return true;
   if (/^(solana|pump\.?fun|we\s*pump|pumptv)$/i.test(symbol) || /^(solana|pump\.?fun|we\s*pump|pumptv)$/i.test(name)) return true;
-  if (/pump\.fun/i.test(name) && (p.liquidity?.usd ?? 0) < 4000) return true;
-  if ((p.liquidity?.usd ?? 0) < 4000 && (p.marketCap ?? p.fdv ?? 0) < 2000) return true;
-  const created = p.pairCreatedAt ?? 0;
-  if (created && Date.now() - created > 10 * 24 * 3600_000) return true;
+  if ((p.marketCap ?? p.fdv ?? 0) < 1500 && (p.liquidity?.usd ?? 0) < 1500) return true;
   return false;
 }
 
@@ -192,21 +212,19 @@ function gemFromPair(p: DexPair): Gem | null {
   const token = p.baseToken?.address;
   if (!chain || !token || chain === "robinhood") return null;
   if (isJunkPair(p)) return null;
+  if ((p.marketCap ?? p.fdv ?? 0) > 25_000_000) return null;
   const mcap = p.marketCap ?? p.fdv ?? null;
   const liq = p.liquidity?.usd ?? null;
-  const change = p.priceChange?.h24 ?? null;
   const vol = p.volume?.h24 ?? null;
   const buyers = p.txns?.h24?.buys ?? 0;
-  const sells = p.txns?.h24?.sells ?? 0;
-  if ((mcap ?? 0) > 25_000_000) return null;
   const scored = scoreGem({
-    mcap, liquidity: liq, change24: change, volume24: vol, buyers: Math.min(buyers, 20),
-    boughtUsd: vol ? vol * 0.55 : 0, soldUsd: vol ? vol * 0.45 : sells, pairCreatedAt: p.pairCreatedAt ?? null,
+    mcap, liquidity: liq, change24: p.priceChange?.h24 ?? null, volume24: vol, buyers: Math.min(buyers, 20),
+    boughtUsd: vol ? vol * 0.55 : 0, soldUsd: vol ? vol * 0.45 : 0, pairCreatedAt: p.pairCreatedAt ?? null,
     firstBuyer: null, smartBuyers: [], dexOnly: true,
   });
   return {
     id: `${chain}-${token}`, chain, token, symbol: p.baseToken?.symbol || "???", name: p.baseToken?.name || p.baseToken?.symbol || "token",
-    imageUrl: null, price: p.priceUsd ? Number(p.priceUsd) : null, mcap, liquidity: liq, change24: change, volume24: vol,
+    imageUrl: null, price: p.priceUsd ? Number(p.priceUsd) : null, mcap, liquidity: liq, change24: p.priceChange?.h24 ?? null, volume24: vol,
     pairUrl: p.url, pairCreatedAt: p.pairCreatedAt ?? null, buyers, firstBuyer: null,
     boughtUsd: vol ? vol * 0.55 : 0, soldUsd: vol ? vol * 0.45 : 0, score: scored.score, reasons: scored.reasons,
     source: "dexscreener watch", smartBuyers: [], kolCount: 0, smartCount: 0, lastSmartTs: null, bestRank: null, isStock: false,
@@ -214,18 +232,31 @@ function gemFromPair(p: DexPair): Gem | null {
 }
 
 export async function fetchSolanaGems(): Promise<Gem[]> {
-  const bags = await Promise.all(["solana new pair", "base new pair"].map((q) => getJson<{ pairs?: DexPair[] }>(`${DEX}/latest/dex/search?q=${encodeURIComponent(q)}`)));
+  const [profiles, boosts, pump] = await Promise.all([
+    getJson<Array<{ chainId: string; tokenAddress: string }>>(`${DEX}/token-profiles/latest/v1`),
+    getJson<Array<{ chainId: string; tokenAddress: string }>>(`${DEX}/token-boosts/latest/v1`),
+    getJson<{ pairs?: DexPair[] }>(`${DEX}/latest/dex/search?q=${encodeURIComponent("pumpfun")}`),
+  ]);
+  const byChain = new Map<string, Set<string>>();
+  for (const row of [...(profiles || []), ...(boosts || [])]) {
+    if (!row?.chainId || !row.tokenAddress) continue;
+    if (row.chainId !== "solana" && row.chainId !== "base" && row.chainId !== "bsc") continue;
+    if (!byChain.has(row.chainId)) byChain.set(row.chainId, new Set());
+    byChain.get(row.chainId)!.add(row.tokenAddress);
+  }
+  const bags = await Promise.all([...byChain.entries()].map(([chain, addrs]) => getJson<DexPair[]>(`${DEX}/tokens/v1/${chain}/${[...addrs].slice(0, 18).join(",")}`)));
   const seen = new Set<string>();
   const gems: Gem[] = [];
-  for (const bag of bags) {
-    for (const p of bag?.pairs || []) {
+  for (const bag of [...bags, pump?.pairs || []]) {
+    for (const p of bag || []) {
       const g = gemFromPair(p);
       if (!g || seen.has(g.id)) continue;
       seen.add(g.id);
       gems.push(g);
     }
   }
-  return rankGems(gems).slice(0, 18);
+  logEvent({ level: "info", event: "dex_watch", outcome: gems.length ? "ok" : "empty", count: gems.length });
+  return rankGems(gems).slice(0, 24);
 }
 
 function mergeTapeIntoGems(gems: Gem[], tape: TapeFill[], traders: Map<string, Trader>): Gem[] {
@@ -247,11 +278,7 @@ function mergeTapeIntoGems(gems: Gem[], tape: TapeFill[], traders: Map<string, T
     gem.buyers += 1;
     if (fill.handle && !gem.smartBuyers.some((b) => b.handle.toLowerCase() === fill.handle!.toLowerCase())) {
       const live = traders.get(fill.handle.toLowerCase());
-      gem.smartBuyers.push({
-        handle: fill.handle, usd: fill.usd, ts: fill.ts, rank: fill.rank,
-        followers: fill.followers || live?.followers || 0, kind: fill.smartKind || live?.kind || "active",
-        avatarUrl: live?.avatarUrl || null,
-      });
+      gem.smartBuyers.push({ handle: fill.handle, usd: fill.usd, ts: fill.ts, rank: fill.rank, followers: fill.followers || live?.followers || 0, kind: fill.smartKind || live?.kind || "active", avatarUrl: live?.avatarUrl || null });
     }
     if (isWatchedKind(fill.smartKind) && (!gem.lastSmartTs || fill.ts > gem.lastSmartTs)) gem.lastSmartTs = fill.ts;
   }
@@ -261,11 +288,7 @@ function mergeTapeIntoGems(gems: Gem[], tape: TapeFill[], traders: Map<string, T
     gem.kolCount = gem.smartBuyers.filter((b) => b.kind === "kol").length;
     gem.smartCount = gem.smartBuyers.filter((b) => b.kind === "smart").length;
     gem.bestRank = watched.length ? Math.min(...watched.map((b) => b.rank || 999)) : gem.bestRank;
-    const scored = scoreGem({
-      mcap: gem.mcap, liquidity: gem.liquidity, change24: gem.change24, volume24: gem.volume24, buyers: gem.buyers,
-      boughtUsd: gem.boughtUsd, soldUsd: gem.soldUsd, pairCreatedAt: gem.pairCreatedAt, firstBuyer: gem.firstBuyer,
-      smartBuyers: gem.smartBuyers, lastSmartTs: gem.lastSmartTs, bestRank: gem.bestRank, isStock: gem.isStock,
-    });
+    const scored = scoreGem({ mcap: gem.mcap, liquidity: gem.liquidity, change24: gem.change24, volume24: gem.volume24, buyers: gem.buyers, boughtUsd: gem.boughtUsd, soldUsd: gem.soldUsd, pairCreatedAt: gem.pairCreatedAt, firstBuyer: gem.firstBuyer, smartBuyers: gem.smartBuyers, lastSmartTs: gem.lastSmartTs, bestRank: gem.bestRank, isStock: gem.isStock });
     gem.score = scored.score;
     gem.reasons = scored.reasons;
     out.push(gem);
@@ -274,9 +297,13 @@ function mergeTapeIntoGems(gems: Gem[], tape: TapeFill[], traders: Map<string, T
 }
 
 export async function fetchRadarBundle(): Promise<{ traders: Trader[]; tape: TapeFill[]; gems: Gem[]; featured: Gem[]; smartTape: TapeFill[]; dexWatch: Gem[] }> {
-  const traders = await fetchPulseTraders();
+  let traders = await fetchPulseTraders();
+  const [discover, tape, dexWatch] = await Promise.all([fetchPulseGems(traderIndex(traders)), fetchPulseTape(180, traderIndex(traders)), fetchSolanaGems()]);
+  if (!traders.length) {
+    traders = tradersFromTape(tape);
+    logEvent({ level: "warn", event: "traders_fallback", outcome: traders.length ? "ok" : "empty", count: traders.length, detail: "derived_from_tape" });
+  }
   const index = traderIndex(traders);
-  const [discover, tape, dexWatch] = await Promise.all([fetchPulseGems(index), fetchPulseTape(180, index), fetchSolanaGems()]);
   const gems = rankGems(mergeTapeIntoGems(discover, tape, index).filter((g) => !g.isStock));
   return { traders, tape, gems, featured: featuredGems(gems, 6), smartTape: tape.filter((r) => isWatchedKind(r.smartKind)).slice(0, 40), dexWatch };
 }
@@ -311,7 +338,7 @@ export async function findTrader(raw: string): Promise<FindResult> {
   let note = "Tek kaynak yetmez. Profil adresi trading cüzdanı değildir.";
   if (apiEvm || apiSol) { proven = "verified"; note = "fomoapi.io resolve + canlı tape kesişimi."; }
   else if (live && known) { proven = "verified"; note = "fomopulse tape adresi, araştırma mapping'i ile örtüşüyor."; }
-  else if (live) { proven = "mapped"; note = `Tape cüzdanı izleniyor · ${live.kind} · skor ${live.smartScore}. SOL tarafı ayrı teyit.`; }
+  else if (live) { proven = "mapped"; note = `Tape cüzdanı izleniyor · ${live.kind} · skor ${live.smartScore}.`; }
   else if (known) { proven = "mapped"; note = known.note; }
   return {
     query, handle: handle || null, displayName: live?.displayName || handle || null,
