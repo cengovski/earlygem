@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { alertKeyboard, clusterHits, formatAlertHtml } from "@/lib/alert-msg";
 import { requireSecret } from "@/lib/auth";
 import { fetchRadarBundle } from "@/lib/radar";
+import { loadSettings } from "@/lib/settings";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
-import { serverRule } from "@/lib/watch";
 
 export const dynamic = "force-dynamic";
 export const preferredRegion = "fra1";
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   if (!telegramConfigured()) {
     return NextResponse.json({ ok: false, error: "telegram_env_yok" });
   }
-  const rule = serverRule();
+  const rule = await loadSettings();
   const bundle = await fetchRadarBundle({ force: true });
   const hits = clusterHits(bundle.tape, rule.windowMin, rule.minUsd, rule.minBuys);
   let sent = 0;
@@ -26,5 +26,5 @@ export async function GET(req: Request) {
     });
     if (out.ok && !out.skipped) sent += 1;
   }
-  return NextResponse.json({ ok: true, tape: bundle.tape.length, hits: hits.length, sent });
+  return NextResponse.json({ ok: true, tape: bundle.tape.length, hits: hits.length, sent, rule });
 }
