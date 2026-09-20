@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "earlygem — FOMO erken gem radar",
-  description: "fomo.family trader fill'lerini Robinhood Chain ve Solana üzerinde izle.",
+  description: "FOMO KOL ve smart cüzdan alış kümelerinden erken gem radar. Tape, roster, handle → cüzdan.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

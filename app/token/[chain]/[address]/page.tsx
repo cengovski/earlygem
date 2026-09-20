@@ -4,7 +4,7 @@ import { GemCard } from "@/components/GemCard";
 import { Shell } from "@/components/Shell";
 import { TapeTable } from "@/components/TapeTable";
 import { dexUrl, explorerToken, shortAddr, usd } from "@/lib/format";
-import { fetchAllGems, fetchMixedTape } from "@/lib/sources";
+import { fetchRadarBundle } from "@/lib/sources";
 import type { ChainId } from "@/lib/types";
 
 export const revalidate = 20;
@@ -14,9 +14,11 @@ export default async function TokenPage({ params }: { params: Promise<{ chain: s
   const { chain, address } = await params;
   if (!CHAINS.includes(chain as ChainId)) notFound();
   const c = chain as ChainId;
-  const [gems, tape] = await Promise.all([fetchAllGems(), fetchMixedTape()]);
-  const gem = gems.find((g) => g.chain === c && g.token.toLowerCase() === address.toLowerCase());
-  const rows = tape.filter((r) => r.token.toLowerCase() === address.toLowerCase());
+  const bundle = await fetchRadarBundle();
+  const gem =
+    bundle.gems.find((g) => g.chain === c && g.token.toLowerCase() === address.toLowerCase()) ||
+    bundle.dexWatch.find((g) => g.chain === c && g.token.toLowerCase() === address.toLowerCase());
+  const rows = bundle.tape.filter((r) => r.token.toLowerCase() === address.toLowerCase());
   return (
     <Shell title={gem?.symbol || shortAddr(address)} subtitle={gem?.name || address}>
       <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
@@ -26,7 +28,11 @@ export default async function TokenPage({ params }: { params: Promise<{ chain: s
         <a className="hover:text-accent" href={dexUrl(c, address, gem?.pairUrl)} target="_blank" rel="noreferrer">dexscreener</a>
         {gem ? <span className="num text-mute">mcap {usd(gem.mcap)}</span> : null}
       </div>
-      {gem ? <div className="mb-6 max-w-md"><GemCard gem={gem} /></div> : <p className="mb-6 text-sm text-mute">Kesif listesinde yok; tape asagida.</p>}
+      {gem ? (
+        <div className="mb-6 max-w-md"><GemCard gem={gem} /></div>
+      ) : (
+        <p className="mb-6 text-sm text-mute">Bu token keşif listesinde yok; tape kesiti aşağıda.</p>
+      )}
       <h2 className="mb-3 text-lg font-medium">Bu token tape</h2>
       <TapeTable rows={rows.slice(0, 40)} />
     </Shell>
