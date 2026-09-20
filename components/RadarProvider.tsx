@@ -7,7 +7,7 @@ import { bustRadarCache, fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
 
 const POLL_MS = 25_000;
-const HANG_MS = 18_000;
+const HANG_MS = 20_000;
 const STALE_RELOAD_MS = 70_000;
 
 type RadarState = {
@@ -33,7 +33,6 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
   const [tick, setTick] = useState(0);
   const lastOk = useRef(Date.now());
   const started = useRef(0);
-  const inflight = useRef(false);
 
   const bump = useCallback(() => {
     bustRadarCache();
@@ -42,8 +41,6 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    if (inflight.current) return;
-    inflight.current = true;
     started.current = Date.now();
     setLoading(true);
     fetchRadarBundle({ force: true })
@@ -55,7 +52,6 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => undefined)
       .finally(() => {
-        inflight.current = false;
         if (!alive) return;
         setLogs(recentLogs(40));
         setLoading(false);
@@ -69,13 +65,12 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     const poll = window.setInterval(() => bump(), POLL_MS);
     const watch = window.setInterval(() => {
       const now = Date.now();
-      if (inflight.current && now - started.current > HANG_MS) {
-        inflight.current = false;
+      if (loading && now - started.current > HANG_MS) {
         setLoading(false);
         bump();
         return;
       }
-      if (!inflight.current && now - lastOk.current > STALE_RELOAD_MS) bump();
+      if (!loading && now - lastOk.current > STALE_RELOAD_MS) bump();
     }, 5_000);
     const onVis = () => {
       if (document.visibilityState === "visible" && Date.now() - lastOk.current > 20_000) bump();
@@ -86,7 +81,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
       window.clearInterval(watch);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [bump]);
+  }, [bump, loading]);
 
   const value = useMemo(() => ({ bundle, loading, logs, reload: bump }), [bundle, loading, logs, bump]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
