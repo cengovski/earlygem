@@ -1,0 +1,160 @@
+import { loadClientKeys } from "./client-keys";
+import { classifyTrader } from "./smart";
+import type { ChainId, TapeFill, Trader } from "./types";
+
+const HOST = "https://api.fomoapi.io";
+const GAP_MS = 2500;
+const CACHE_MS = 45_000;
+const MAX_AGE_MS = 8 * 60 * 60 * 1000;
+
+let lastAt = 0;
+let alertCache: { at: number; fills: TapeFill[] } | null = null;
+
+export function fomoApiKey() {
+  if (typeof window !== "undefined") {
+    return loadClientKeys().fomo || process.env.NEXT_PUBLIC_FOMO_API_KEY || "";
+  }
+  return process.env.FOMOAPI_KEY || process.env.FOMO_API_KEY || "";
+}
+
+export function fomoConfigured() {
+  return Boolean(fomoApiKey());
+}
+
+async function gate() {
+  const wait = GAP_MS - (Date.now() - lastAt);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastAt = Date.now();
+}
+
+function chainOf(row: { chain?: string; chainId?: number }): ChainId | null {
+  const c = (row.chain || "").toLowerCase();
+  if (c === "solana" || c === "sol") return "solana";
+  if (c === "base") return "base";
+  if (c === "bsc" || c === "bnb") return "bsc";
+  if (c === "eth" || c === "ethereum") return "ethereum";
+  if (c === "monad") return "monad";
+  if (c === "robinhood" || row.chainId === 4663) return "robinhood";
+  return null;
+}
+
+export async function fomoGet<T>(path: string, query?: Record<string, string>): Promise<T | null> {
+  const key = fomoApiKey();
+  if (!key) return null;
+  await gate();
+  const qs = query ? `?${new URLSearchParams(query).toString()}` : "";
+  const res = await fetch(`${HOST}${path}${qs}`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${key}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (res.status === 429) {
+    lastAt = Date.now() + 15_000;
+    return null;
+  }
+  if (!res.ok) return null;
+  return (await res.json().catch(() => null)) as T | null;
+}
+
+type FomoAlert = {
+  type?: string;
+  alertType?: string;
+  type_?: string;
+  trader?: string | { handle?: string; wallet?: string };
+  token?: string | { address?: string; symbol?: string; mcap?: number };
+  tokenAddress?: string;
+  chain?: string;
+  chainId?: number;
+  usdValue?: number;
+  amountToken?: number;
+  txHash?: string;
+  ts?: number;
+  seenAt?: number;
+};
+
+function handleOf(row: FomoAlert) {
+  if (typeof row.trader === "string") return row.trader;
+  return row.trader?.handle || "";
+}
+
+function walletOf(row: FomoAlert) {
+  if (typeof row.trader === "object") return row.trader?.wallet || null;
+  return null;
+}
+
+function tokenOf(row: FomoAlert) {
+  if (typeof row.token === "object") return row.token?.address || row.tokenAddress || "";
+  return row.tokenAddress || "";
+}
+
+function symbolOf(row: FomoAlert) {
+  if (typeof row.token === "object") return row.token?.symbol || "???";
+  return typeof row.token === "string" ? row.token : "???";
+}
+
+export async function fetchFomoAlerts(): Promise<TapeFill[]> {
+  if (!fomoConfigured()) return [];
+  if (alertCache && Date.now() - alertCache.at < CACHE_MS) return alertCache.fills;
+  const raw = await fomoGet<{ data?: FomoAlert[]; alerts?: FomoAlert[] } | FomoAlert[]>("/v2/alerts", {
+    limit: "40",
+  });
+  const rows = Array.isArray(raw) ? raw : raw?.data || raw?.alerts || [];
+  const fills: TapeFill[] = [];
+  for (const row of rows) {
+    const sideRaw = (row.alertType || row.type_ || row.type || "").toLowerCase();
+    if (sideRaw !== "buy" && sideRaw !== "sell") continue;
+    const token = tokenOf(row);
+    const chain = chainOf(row);
+    if (!token || !chain) continue;
+    const ts = Number(row.ts || row.seenAt || 0);
+    const at = ts > 10_000_000_000 ? ts : ts * 1000;
+    if (!at || Date.now() - at > MAX_AGE_MS) continue;
+    const handle = handleOf(row);
+    const tagged = classifyTrader({
+      handle,
+      followers: 0,
+      rank: null,
+      volume: Number(row.usdValue || 0),
+      realized: 0,
+      unrealized: 0,
+      wins: 0,
+      trips: 0,
+      fills: 1,
+    });
+    fills.push({
+      id: `fomoapi-${row.txHash || token}-${at}`,
+      ts: at,
+      chain,
+      side: sideRaw,
+      usd: Number(row.usdValue || 0),
+      amount: Number(row.amountToken || 0),
+      price: null,
+      token,
+      symbol: symbolOf(row),
+      name: symbolOf(row),
+      mcap: typeof row.token === "object" ? row.token?.mcap || null : null,
+      liquidity: null,
+      change24: null,
+      pairUrl: null,
+      imageUrl: null,
+      wallet: walletOf(row),
+      handle: handle || null,
+      followers: null,
+      profileUrl: handle ? `https://fomo.family/profile/${handle}` : null,
+      rank: null,
+      tx: row.txHash || null,
+      firstBuy: false,
+      flags: ["fomoapi", tagged.kind],
+      source: "fomopulse",
+      smartKind: tagged.kind,
+    });
+  }
+  alertCache = { at: Date.now(), fills };
+  return fills;
+}
+
+export async function fetchFomoUser(handle: string): Promise<{ evm?: string | null; solana?: string | null } | null> {
+  if (!fomoConfigured() || !handle) return null;
+  const raw = await fomoGet<{ wallets?: { evm?: string; solana?: string } }>(`/v2/users/${encodeURIComponent(handle)}`);
+  return raw?.wallets || null;
+}
