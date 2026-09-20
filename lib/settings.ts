@@ -14,9 +14,11 @@ function origin() {
   return (process.env.PULSE_ORIGIN || "").replace(/\/$/, "");
 }
 
-function auth() {
+function headers(extra?: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = { Accept: "application/json", ...(extra || {}) };
   const s = process.env.APP_SECRET || process.env.CRON_SECRET || "";
-  return s ? { Authorization: `Bearer ${s}` } : {};
+  if (s) out.Authorization = `Bearer ${s}`;
+  return out;
 }
 
 export async function loadSettings(): Promise<AlertRule> {
@@ -25,7 +27,7 @@ export async function loadSettings(): Promise<AlertRule> {
   if (host) {
     try {
       const res = await fetch(`${host}/api/settings`, {
-        headers: { Accept: "application/json", ...auth() },
+        headers: headers(),
         cache: "no-store",
         signal: AbortSignal.timeout(5_000),
       });
@@ -59,7 +61,7 @@ export async function saveSettings(rule: AlertRule) {
   try {
     const res = await fetch(`${host}/api/settings`, {
       method: "PUT",
-      headers: { "content-type": "application/json", ...auth() },
+      headers: headers({ "content-type": "application/json" }),
       body: JSON.stringify(next),
       signal: AbortSignal.timeout(5_000),
     });
