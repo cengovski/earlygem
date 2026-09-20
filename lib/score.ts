@@ -29,7 +29,9 @@ export function scoreGem(input: {
   name?: string;
   pairUrl?: string | null;
   kolCount?: number;
+  honeypot?: boolean | null;
 }): { score: number; reasons: string[] } {
+  if (input.honeypot) return { score: 0, reasons: ["honeypot"] };
   const flags = scamReasons({
     token: input.token || "",
     symbol: input.symbol || "",
@@ -43,9 +45,7 @@ export function scoreGem(input: {
     buyers: input.buyers,
     kolCount: input.kolCount ?? (input.smartBuyers || []).filter((b) => b.kind === "kol").length,
   });
-  if (flags.length) {
-    return { score: 0, reasons: flags.slice(0, 4) };
-  }
+  if (flags.length) return { score: 0, reasons: flags.slice(0, 4) };
 
   const reasons: string[] = [];
   let score = 8;
@@ -168,7 +168,14 @@ export function rankGems(gems: Gem[]): Gem[] {
 
 export function featuredGems(gems: Gem[], n = 6): Gem[] {
   const watched = gems.filter(
-    (g) => !g.isStock && !isScamGem(g) && g.score > 0 && g.kolCount + g.smartCount >= 1 && g.lastSmartTs != null,
+    (g) =>
+      !g.isStock &&
+      !isScamGem(g) &&
+      !g.honeypot &&
+      g.securityOk === true &&
+      g.score > 0 &&
+      g.kolCount + g.smartCount >= 1 &&
+      g.lastSmartTs != null,
   );
   return rankGems(watched).slice(0, n);
 }

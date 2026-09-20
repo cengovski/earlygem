@@ -23,6 +23,24 @@ export function GemCard({ gem }: { gem: Gem }) {
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <ChainBadge chain={gem.chain} />
+        {gem.launchpad ? (
+          <span className="rounded-md border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-mute">
+            {gem.launchpad}
+          </span>
+        ) : null}
+        {gem.securityOk ? (
+          <span className="rounded-md bg-[#1c2a16] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[#9adf6a]">
+            GMGN OK
+          </span>
+        ) : gem.honeypot ? (
+          <span className="rounded-md bg-[#2a1616] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[#e07a7a]">
+            honeypot
+          </span>
+        ) : (
+          <span className="rounded-md border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-mute">
+            taranmadı
+          </span>
+        )}
         {gem.kolCount ? <SmartBadge kind="kol" /> : null}
         {gem.smartCount ? <SmartBadge kind="smart" /> : null}
         <span className="num text-xs text-mute">mcap {usd(gem.mcap)}</span>
