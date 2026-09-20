@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint",
+    "test": "echo \"no tests yet\" && exit 0"
   },
   "dependencies": {
     "react": "19.1.2",

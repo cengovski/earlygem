@@ -5,7 +5,6 @@ import { markFeeds } from "@/lib/health";
 import { recentLogs, type LogEvent } from "@/lib/log";
 import { fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
-import { fireTapeAlerts } from "@/lib/watch";
 
 const POLL_MS = 45_000;
 
@@ -43,7 +42,6 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
         if (!alive) return;
         setBundle(next);
         markFeeds(next.tape, next.traders);
-        fireTapeAlerts(next.tape.slice(0, 200)).catch(() => null);
       })
       .catch(() => undefined)
       .finally(() => {

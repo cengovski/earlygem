@@ -2,7 +2,6 @@ import { logEvent } from "./log";
 
 const WORKER = "https://damp-butterfly-34a4.cengovski.workers.dev";
 const DIRECT = "https://fomopulse.app";
-const VPS = "http://107.175.85.233:8787";
 
 function extraOrigin() {
   const env =
@@ -17,7 +16,7 @@ function origins() {
   if (typeof window !== "undefined") {
     return [...new Set(["/api/upstream", extra, DIRECT, WORKER].filter(Boolean))];
   }
-  return [...new Set([extra, VPS, DIRECT, WORKER].filter(Boolean))];
+  return [...new Set([extra, DIRECT, WORKER].filter(Boolean))];
 }
 
 export const PULSE_ORIGINS = origins();
