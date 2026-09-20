@@ -36,11 +36,12 @@ const WRAPPED_SYM = new Set(
     "WSOL", "WETH", "WBNB", "WBTC", "WBTCb", "BTCB", "WETH.e", "WBTC.e",
     "cbETH", "wstETH", "weETH", "rETH", "WMON", "WAVAX", "WMATIC", "WFTM",
     "WSUI", "WBERA", "SOL", "ETH", "BNB", "BTC", "USDC", "USDT", "USD1",
+    "XSOL", "FTT", "ARB", "ZEC", "DOGE", "WIF", "QQQ", "QQQX",
   ].map((s) => s.toUpperCase()),
 );
 
-const JUNK_SYM = /^(pump|pumpfun|sol|wsol|usdc|usdt|eth|weth|bnb|wbnb|btc|wbtc)$/i;
-const MAX_ALERT_MCAP = 25_000_000;
+const JUNK_SYM = /^(pump|pumpfun|sol|wsol|usdc|usdt|eth|weth|bnb|wbnb|btc|wbtc|xsol|doge|arb|zec|ftt|ftx|wif|qqq|qqqx|qqy|cards)$/i;
+const MAX_ALERT_MCAP = 8_000_000;
 
 export function isWrappedBase(token: string, symbol?: string, name?: string) {
   const addr = token.trim().toLowerCase();
@@ -49,7 +50,7 @@ export function isWrappedBase(token: string, symbol?: string, name?: string) {
   if (sym && WRAPPED_SYM.has(sym)) return true;
   if (JUNK_SYM.test(sym)) return true;
   const label = `${sym} ${name || ""}`.toUpperCase();
-  if (/\bWRAPPED\s+(SOL|ETH|BNB|BTC|BITCOIN|ETHER|MONAD)\b/.test(label)) return true;
+  if (/\b(WRAPPED|WORMHOLE|XSTOCK|NASDAQ)\b/.test(label)) return true;
   if (/^W(SOL|ETH|BNB|BTC|MON|AVAX|MATIC|FTM|SUI|BERA)$/.test(sym)) return true;
   return false;
 }
