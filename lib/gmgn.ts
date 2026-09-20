@@ -1,7 +1,7 @@
+import { clientGmgnKey } from "./client-keys";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const HOST = "https://openapi.gmgn.ai";
-const DEMO_KEY = "gmgn_solbscbaseethmonadtron";
 const MIN_GAP_MS = 900;
 const MAX_JOBS = 3;
 const MIN_USD = 8;
@@ -11,7 +11,12 @@ const STOCK = /^(googlb?|gmeb?|qqqb?|nvdab?|tslab?|aaplb?|msftb?|metab?|amznb?|g
 export const GMGN_FOMO_EVM: ChainId[] = ["robinhood", "base", "bsc", "ethereum", "monad"];
 
 export function gmgnApiKey() {
-  return process.env.GMGN_API_KEY || DEMO_KEY;
+  if (typeof window !== "undefined") return clientGmgnKey() || process.env.NEXT_PUBLIC_GMGN_API_KEY || "";
+  return process.env.GMGN_API_KEY || "";
+}
+
+export function gmgnConfigured() {
+  return Boolean(gmgnApiKey());
 }
 
 export function gmgnSlug(chain: ChainId): string | null {
@@ -43,41 +48,36 @@ type GmgnActivity = {
 type GmgnEnvelope = {
   code?: number;
   error?: string;
-  reset_at?: number;
   data?: { activities?: GmgnActivity[]; list?: GmgnActivity[] };
 };
 
 let lastAt = 0;
 let evmCursor = 0;
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 async function gate() {
   const wait = MIN_GAP_MS - (Date.now() - lastAt);
-  if (wait > 0) await sleep(wait);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastAt = Date.now();
 }
 
 async function gmgnGet(path: string, query: Record<string, string | number | undefined>): Promise<GmgnEnvelope | null> {
+  const key = gmgnApiKey();
+  if (!key) return null;
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
+  for (const [k, value] of Object.entries(query)) {
     if (value == null || value === "") continue;
-    params.set(key, String(value));
+    params.set(k, String(value));
   }
   params.set("timestamp", String(Math.floor(Date.now() / 1000)));
   params.set("client_id", crypto.randomUUID());
   await gate();
   const res = await fetch(`${HOST}${path}?${params.toString()}`, {
-    headers: { "X-APIKEY": gmgnApiKey(), Accept: "application/json" },
+    headers: { "X-APIKEY": key, Accept: "application/json" },
     cache: "no-store",
     signal: AbortSignal.timeout(8_000),
   });
   const json = (await res.json().catch(() => null)) as GmgnEnvelope | null;
-  if (res.status === 429 || json?.error === "RATE_LIMIT_EXCEEDED" || json?.error === "RATE_LIMIT_BANNED") {
-    return null;
-  }
+  if (res.status === 429 || json?.error === "RATE_LIMIT_EXCEEDED" || json?.error === "RATE_LIMIT_BANNED") return null;
   if (!res.ok || !json) return null;
   return json;
 }
@@ -141,9 +141,9 @@ function planJobs(traders: Trader[]): Job[] {
   const jobs: Job[] = [];
   const seen = new Set<string>();
   const push = (job: Job) => {
-    const key = `${job.chain}:${job.wallet.toLowerCase()}`;
-    if (seen.has(key) || jobs.length >= MAX_JOBS) return;
-    seen.add(key);
+    const k = `${job.chain}:${job.wallet.toLowerCase()}`;
+    if (seen.has(k) || jobs.length >= MAX_JOBS) return;
+    seen.add(k);
     jobs.push(job);
   };
   for (const trader of watched) {
@@ -154,17 +154,14 @@ function planJobs(traders: Trader[]): Job[] {
 }
 
 export async function fetchGmgnWalletTape(traders: Trader[]): Promise<TapeFill[]> {
+  if (!gmgnConfigured()) return [];
   const jobs = planJobs(traders);
   if (!jobs.length) return [];
   const out: TapeFill[] = [];
   for (const job of jobs) {
     const slug = gmgnSlug(job.chain);
     if (!slug) continue;
-    const raw = await gmgnGet("/v1/user/wallet_activity", {
-      chain: slug,
-      wallet_address: job.wallet,
-      limit: 12,
-    });
+    const raw = await gmgnGet("/v1/user/wallet_activity", { chain: slug, wallet_address: job.wallet, limit: 12 });
     const rows = raw?.data?.activities || raw?.data?.list || [];
     for (const row of rows) {
       const fill = fillFromActivity(row, job.trader);
