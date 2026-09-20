@@ -10,6 +10,7 @@ import { logEvent } from "./log";
 import { attachSolana } from "./solmap";
 import { gemsFromSolTape } from "./soltape";
 import { clearSnapshot, lastSnapshot, readSnapshot, writeSnapshot, type RadarBundle, type RadarMeta } from "./store";
+import { uniqueFills } from "./tape-key";
 import { gemsFromSwaps, isSwapFill } from "./trades";
 import type { TapeFill, Trader } from "./types";
 
@@ -169,23 +170,23 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   }
 
   const index = traderIndex(traders);
-  const tape = tapeRaw.filter(keepFill).map((row) => ({
-    ...row,
-    smartKind:
-      row.smartKind ||
-      (row.handle ? index.get(row.handle.toLowerCase())?.kind || null : null),
-  }));
+  const tape = uniqueFills(
+    tapeRaw.filter(keepFill).map((row) => ({
+      ...row,
+      smartKind: row.smartKind || (row.handle ? index.get(row.handle.toLowerCase())?.kind || null : null),
+    })),
+  );
 
   const feeds = await withTimeout(fetchExternalFeeds(), 12_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
   traders = mergeTraders(traders, feeds.traders);
-  const solTape = feeds.fills.filter(keepFill).sort((a, b) => b.ts - a.ts);
+  const solTape = uniqueFills(feeds.fills.filter(keepFill)).sort((a, b) => b.ts - a.ts);
   const solGems = gemsFromSolTape(solTape);
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 
   const rawGems = rankGems([...gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape), ...solGems]);
   const gems = await withTimeout(attachGmgnSecurity(rawGems, 8), 8_000, rawGems);
   const featured = featuredGems(gems, 6);
-  const merged = [...solTape, ...tape].sort((a, b) => b.ts - a.ts).slice(0, 400);
+  const merged = uniqueFills([...tape, ...solTape]).sort((a, b) => b.ts - a.ts).slice(0, 400);
   const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 80);
   const bundle: RadarBundle = { traders, tape: merged, gems, featured, smartTape, dexWatch, status, solTape, solGems };
   const meta: RadarMeta = {
