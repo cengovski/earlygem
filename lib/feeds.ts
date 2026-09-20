@@ -1,3 +1,4 @@
+import { fetchBinanceFeeds } from "./binance";
 import { gmgnApiKey, gmgnSlug, chainFromGmgn } from "./gmgn";
 import { classifyTrader } from "./smart";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
@@ -263,8 +264,10 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
     pullFeed("smart", "solana", 40),
     pullFeed("kol", "bsc", 20),
     pullPumpRoster(),
+    fetchBinanceFeeds(),
   ]);
-  const fills = [...jobs[0].fills, ...jobs[1].fills, ...jobs[2].fills].sort((a, b) => b.ts - a.ts);
-  const traders = mergeTraders([], [...jobs[0].traders, ...jobs[1].traders, ...jobs[2].traders, jobs[3]]);
+  const bn = jobs[4];
+  const fills = [...jobs[0].fills, ...jobs[1].fills, ...jobs[2].fills, ...bn.fills].sort((a, b) => b.ts - a.ts);
+  const traders = mergeTraders([], [...jobs[0].traders, ...jobs[1].traders, ...jobs[2].traders, jobs[3], ...bn.traders]);
   return { fills, traders };
 }
