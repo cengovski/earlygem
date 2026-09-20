@@ -10,14 +10,15 @@ const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 const MIN_USD = 8;
 
 let lastAt = 0;
+let pumpCache: { at: number; rows: Trader[] } | null = null;
 
 function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, r));
 }
 
 async function gmgn(path: string, query: Record<string, string>) {
   const wait = GAP - (Date.now() - lastAt);
-  if (wait > 0) await sleep(wait);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastAt = Date.now();
   const params = new URLSearchParams({
     ...query,
@@ -181,8 +182,10 @@ async function pullFeed(kind: "kol" | "smart", chain: ChainId, limit: number) {
 }
 
 async function pullPumpRoster(): Promise<Trader[]> {
+  if (pumpCache && Date.now() - pumpCache.at < 10 * 60_000) return pumpCache.rows;
   try {
-    const res = await fetch(PUMP_USERS, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
+    const url = typeof window !== "undefined" ? "/api/pump-roster" : PUMP_USERS;
+    const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
     const rows = (await res.json()) as Array<{
       username?: string;
       followers?: number;
@@ -191,8 +194,8 @@ async function pullPumpRoster(): Promise<Trader[]> {
       x_username?: string | null;
       profile_image?: string;
     }>;
-    if (!Array.isArray(rows)) return [];
-    return rows.slice(0, 25).map((row) => {
+    if (!Array.isArray(rows) || !rows.length) return pumpCache?.rows || [];
+    const traders = rows.slice(0, 25).map((row) => {
       const handle = row.x_username || row.username || row.canonical_svm_wallet?.slice(0, 8) || "pump";
       const tagged = classifyTrader({
         handle,
@@ -228,8 +231,10 @@ async function pullPumpRoster(): Promise<Trader[]> {
         smartReasons: ["src:pumpfun"],
       } satisfies Trader;
     });
+    pumpCache = { at: Date.now(), rows: traders };
+    return traders;
   } catch {
-    return [];
+    return pumpCache?.rows || [];
   }
 }
 
