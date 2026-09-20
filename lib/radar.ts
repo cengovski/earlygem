@@ -3,6 +3,7 @@ import { featuredGems, rankGems } from "./score";
 import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
 import { fetchPulseGems, fetchPulseStatus, fetchPulseTape, fetchPulseTraders } from "./sources";
 import { fetchSolWatch } from "./dexwatch";
+import { fetchGmgnWalletTape } from "./gmgn";
 import { logEvent } from "./log";
 import { attachSolana } from "./solmap";
 import { fetchSolTape, gemsFromSolTape } from "./soltape";
@@ -139,10 +140,12 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
         : null),
   }));
 
-  const solTape = await fetchSolTape(traders.filter((t) => isWatchedKind(t.kind) && t.solana)).catch(() => [] as TapeFill[]);
+  const watchedSol = traders.filter((t) => isWatchedKind(t.kind) && t.solana);
+  let solTape = await fetchGmgnWalletTape(watchedSol).catch(() => [] as TapeFill[]);
+  if (!solTape.length) solTape = await fetchSolTape(watchedSol).catch(() => [] as TapeFill[]);
   const solGems = gemsFromSolTape(solTape);
-  if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length });
-  else if (traders.some((t) => t.solana)) logEvent({ level: "warn", event: "sol_tape", outcome: "empty", detail: "rpc_no_swaps" });
+  if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn_or_rpc" });
+  else if (traders.some((t) => t.solana)) logEvent({ level: "warn", event: "sol_tape", outcome: "empty", detail: "gmgn_rpc_empty" });
 
   const gems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
   const featured = featuredGems(gems, 6);
