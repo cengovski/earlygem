@@ -1,11 +1,11 @@
 import { loadClientKeys } from "./client-keys";
 import { classifyTrader } from "./smart";
-import type { ChainId, TapeFill, Trader } from "./types";
+import type { ChainId, TapeFill } from "./types";
 
 const HOST = "https://api.fomoapi.io";
 const GAP_MS = 2500;
 const CACHE_MS = 45_000;
-const MAX_AGE_MS = 8 * 60 * 60 * 1000;
+const TAPE_MAX_AGE_MS = 20 * 60_000;
 
 let lastAt = 0;
 let alertCache: { at: number; fills: TapeFill[] } | null = null;
@@ -34,7 +34,7 @@ function chainOf(row: { chain?: string; chainId?: number }): ChainId | null {
   if (c === "bsc" || c === "bnb") return "bsc";
   if (c === "eth" || c === "ethereum") return "ethereum";
   if (c === "monad") return "monad";
-  if (c === "robinhood" || row.chainId === 4663) return "robinhood";
+  if (c === "robinhood" || row.chainId === 4663) return null;
   return null;
 }
 
@@ -102,13 +102,13 @@ export async function fetchFomoAlerts(): Promise<TapeFill[]> {
   const fills: TapeFill[] = [];
   for (const row of rows) {
     const sideRaw = (row.alertType || row.type_ || row.type || "").toLowerCase();
-    if (sideRaw !== "buy" && sideRaw !== "sell") continue;
+    if (sideRaw !== "buy") continue;
     const token = tokenOf(row);
     const chain = chainOf(row);
     if (!token || !chain) continue;
     const ts = Number(row.ts || row.seenAt || 0);
     const at = ts > 10_000_000_000 ? ts : ts * 1000;
-    if (!at || Date.now() - at > MAX_AGE_MS) continue;
+    if (!at || Date.now() - at > TAPE_MAX_AGE_MS) continue;
     const handle = handleOf(row);
     const tagged = classifyTrader({
       handle,
@@ -125,7 +125,7 @@ export async function fetchFomoAlerts(): Promise<TapeFill[]> {
       id: `fomoapi-${row.txHash || token}-${at}`,
       ts: at,
       chain,
-      side: sideRaw,
+      side: "buy",
       usd: Number(row.usdValue || 0),
       amount: Number(row.amountToken || 0),
       price: null,
