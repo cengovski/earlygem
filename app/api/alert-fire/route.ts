@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { alertKeyboard, formatAlertHtml, skipAlertToken, type AlertHit } from "@/lib/alert-msg";
 import { hydrateHit } from "@/lib/dexmeta";
+import { noteHourHit } from "@/lib/hour-book";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,17 @@ export async function POST(req: Request) {
   const errors: string[] = [];
   for (const raw of hits) {
     const hit = await hydrateHit(raw);
+    noteHourHit({
+      chain: hit.chain,
+      token: hit.token,
+      symbol: hit.symbol,
+      buys: hit.buys,
+      usd: hit.usd,
+      handles: hit.handles,
+      mcap: hit.mcap,
+      change24: hit.change24,
+      cross: true,
+    });
     const out = await sendTelegram(formatAlertHtml(hit), `${hit.chain}:${hit.token.toLowerCase()}`, {
       html: true,
       keyboard: alertKeyboard(hit.chain, hit.token),
