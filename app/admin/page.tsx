@@ -2,15 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
+import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
 import type { AlertRule } from "@/lib/watch";
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [password, setPassword] = useState("");
   const [rule, setRule] = useState<AlertRule>({ windowMin: 10, minUsd: 1000, minBuys: 5 });
+  const [keys, setKeys] = useState<ClientKeys>({});
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
+    setKeys(loadClientKeys());
     fetch("/api/admin/me")
       .then((r) => r.json())
       .then(async (row: { ok?: boolean }) => {
@@ -24,7 +27,7 @@ export default function AdminPage() {
 
   if (!authed) {
     return (
-      <Shell title="Admin" subtitle="Sadece sen. Şifre Vercel ADMIN_PASSWORD.">
+      <Shell title="Admin" subtitle="Şifre Vercel ADMIN_PASSWORD. Key'ler sadece bu tarayıcıda kalır.">
         <form
           className="max-w-sm space-y-3 rounded-xl border border-line bg-surface p-4"
           onSubmit={async (e) => {
@@ -40,6 +43,7 @@ export default function AdminPage() {
               return;
             }
             setAuthed(true);
+            setKeys(loadClientKeys());
             const ruleRes = await fetch("/api/admin/rule");
             if (ruleRes.ok) setRule(await ruleRes.json());
             setMsg("");
@@ -47,16 +51,9 @@ export default function AdminPage() {
         >
           <label className="block text-sm">
             şifre
-            <input
-              className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
-          <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">
-            gir
-          </button>
+          <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">gir</button>
           {msg ? <p className="text-xs text-mute">{msg}</p> : null}
         </form>
       </Shell>
@@ -64,9 +61,9 @@ export default function AdminPage() {
   }
 
   return (
-    <Shell title="Admin · eşik" subtitle="Kayıt cron’un kullandığı kuraldır. Başkası bu sayfayı açsa bile şifresiz kaydedemez.">
+    <Shell title="Admin" subtitle="Eşik cron için. Key'ler localStorage — istekler senin IP'nden gider.">
       <form
-        className="max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
+        className="mb-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
         onSubmit={async (e) => {
           e.preventDefault();
           const res = await fetch("/api/admin/rule", {
@@ -75,36 +72,31 @@ export default function AdminPage() {
             body: JSON.stringify(rule),
           });
           const json = (await res.json()) as { ok?: boolean; persisted?: string; error?: string };
-          setMsg(json.ok ? `kaydedildi (${json.persisted || "ok"})` : json.error || "hata");
+          setMsg(json.ok ? `eşik kaydedildi (${json.persisted || "ok"})` : json.error || "hata");
         }}
       >
-        <label className="block text-sm">
-          pencere (dk)
-          <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.windowMin} onChange={(e) => setRule({ ...rule, windowMin: Number(e.target.value) })} />
-        </label>
-        <label className="block text-sm">
-          min alım USD
-          <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={100} value={rule.minUsd} onChange={(e) => setRule({ ...rule, minUsd: Number(e.target.value) })} />
-        </label>
-        <label className="block text-sm">
-          min alım adedi
-          <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.minBuys} onChange={(e) => setRule({ ...rule, minBuys: Number(e.target.value) })} />
-        </label>
+        <p className="text-sm font-medium">Telegram eşiği</p>
+        <label className="block text-sm">pencere (dk)<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.windowMin} onChange={(e) => setRule({ ...rule, windowMin: Number(e.target.value) })} /></label>
+        <label className="block text-sm">min alım USD<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={100} value={rule.minUsd} onChange={(e) => setRule({ ...rule, minUsd: Number(e.target.value) })} /></label>
+        <label className="block text-sm">min alım adedi<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.minBuys} onChange={(e) => setRule({ ...rule, minBuys: Number(e.target.value) })} /></label>
+        <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">eşiği kaydet</button>
+      </form>
+      <form
+        className="max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveClientKeys(keys);
+          setMsg("key'ler bu tarayıcıya yazıldı — radar yenile");
+        }}
+      >
+        <p className="text-sm font-medium">Tarayıcı key'leri</p>
+        <label className="block text-sm">GMGN<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.gmgn || ""} onChange={(e) => setKeys({ ...keys, gmgn: e.target.value })} placeholder="gmgn_..." /></label>
+        <label className="block text-sm">Binance key<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceKey || ""} onChange={(e) => setKeys({ ...keys, binanceKey: e.target.value })} /></label>
+        <label className="block text-sm">Binance secret<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceSecret || ""} onChange={(e) => setKeys({ ...keys, binanceSecret: e.target.value })} /></label>
+        <label className="block text-sm">FOMO API<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.fomo || ""} onChange={(e) => setKeys({ ...keys, fomo: e.target.value })} placeholder="fapi_..." /></label>
         <div className="flex gap-2">
-          <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">
-            kaydet
-          </button>
-          <button
-            className="rounded-md border border-line px-3 py-1 text-sm"
-            type="button"
-            onClick={async () => {
-              await fetch("/api/admin/logout", { method: "POST" });
-              setAuthed(false);
-              setPassword("");
-            }}
-          >
-            çık
-          </button>
+          <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">key kaydet</button>
+          <button className="rounded-md border border-line px-3 py-1 text-sm" type="button" onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }); setAuthed(false); }}>çık</button>
         </div>
         {msg ? <p className="text-xs text-mute">{msg}</p> : null}
       </form>

@@ -1,3 +1,4 @@
+import { clientBinance } from "./client-keys";
 import { classifyTrader } from "./smart";
 import type { ChainId, TapeFill, Trader } from "./types";
 
@@ -5,9 +6,11 @@ const HOST = "https://web3.binance.com";
 const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 
 function key() {
+  if (typeof window !== "undefined") return clientBinance().key || process.env.NEXT_PUBLIC_BINANCE_WEB3_API_KEY || "";
   return process.env.BINANCE_WEB3_API_KEY || "";
 }
 function secret() {
+  if (typeof window !== "undefined") return clientBinance().secret || process.env.NEXT_PUBLIC_BINANCE_WEB3_API_SECRET || "";
   return process.env.BINANCE_WEB3_API_SECRET || "";
 }
 
@@ -60,13 +63,7 @@ async function signOne(path: string, query: Record<string, string>): Promise<{ u
   const ts = new Date().toISOString();
   const pre = `${ts}GET${requestPath}`;
   const enc = new TextEncoder();
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret()),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
+  const cryptoKey = await crypto.subtle.importKey("raw", enc.encode(secret()), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sigBuf = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(pre));
   return {
     url: `${HOST}${requestPath}`,
@@ -241,7 +238,7 @@ export function parseBinancePayloads(rows: Record<string, Record<string, unknown
   };
 }
 
-export async function loadBinanceFeedsDirect(): Promise<{ fills: TapeFill[]; traders: Trader[]; code?: number }> {
+export async function fetchBinanceFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
   if (!binanceConfigured()) return { fills: [], traders: [] };
   try {
     const bag: Record<string, Record<string, unknown> | null> = {};
@@ -252,34 +249,4 @@ export async function loadBinanceFeedsDirect(): Promise<{ fills: TapeFill[]; tra
   } catch {
     return { fills: [], traders: [] };
   }
-}
-
-export async function fetchBinanceFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
-  if (typeof window !== "undefined") {
-    try {
-      const signRes = await fetch("/api/binance/sign", { cache: "no-store", signal: AbortSignal.timeout(8_000) });
-      if (!signRes.ok) return { fills: [], traders: [] };
-      const signed = (await signRes.json()) as { tickets?: BinanceTicket[] };
-      const tickets = signed.tickets || [];
-      const bag: Record<string, Record<string, unknown> | null> = {};
-      await Promise.all(
-        tickets.map(async (ticket) => {
-          try {
-            const res = await fetch(ticket.url, {
-              headers: ticket.headers,
-              cache: "no-store",
-              signal: AbortSignal.timeout(8_000),
-            });
-            bag[ticket.id] = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-          } catch {
-            bag[ticket.id] = null;
-          }
-        }),
-      );
-      return parseBinancePayloads(bag);
-    } catch {
-      return { fills: [], traders: [] };
-    }
-  }
-  return loadBinanceFeedsDirect();
 }
