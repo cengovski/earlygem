@@ -1,3 +1,4 @@
+import { isScamGem } from "./scam";
 import { scoreGem } from "./score";
 import { isWatchedKind } from "./smart";
 import type { Gem, GemBuyer, TapeFill } from "./types";
@@ -49,6 +50,10 @@ function rescore(gem: Gem): Gem {
   gem.bestRank = watched.length ? Math.min(...watched.map((b) => b.rank || 999)) : null;
   gem.lastSmartTs = watched.length ? Math.max(...watched.map((b) => b.ts)) : null;
   const scored = scoreGem({
+    token: gem.token,
+    symbol: gem.symbol,
+    name: gem.name,
+    pairUrl: gem.pairUrl,
     mcap: gem.mcap,
     liquidity: gem.liquidity,
     change24: gem.change24,
@@ -62,6 +67,7 @@ function rescore(gem: Gem): Gem {
     lastSmartTs: gem.lastSmartTs,
     bestRank: gem.bestRank,
     isStock: gem.isStock,
+    kolCount: gem.kolCount,
   });
   gem.score = scored.score;
   gem.reasons = scored.reasons;
@@ -147,5 +153,5 @@ export function gemsFromSwaps(discover: Gem[], tape: TapeFill[]): Gem[] {
     byToken.set(token, rescore(gem));
   }
 
-  return [...byToken.values()].filter((g) => !g.isStock && g.kolCount + g.smartCount > 0);
+  return [...byToken.values()].filter((g) => !g.isStock && !isScamGem(g) && g.score > 0 && g.kolCount + g.smartCount > 0);
 }
