@@ -1,3 +1,4 @@
+import { isWrappedBase } from "./alert-msg";
 import { KNOWN_WALLETS } from "./known";
 import { featuredGems, rankGems } from "./score";
 import { attachGmgnSecurity } from "./scan";
@@ -21,6 +22,10 @@ const KNOWN_SOL = Object.fromEntries(
     .filter(([, row]) => row.solana)
     .map(([handle, row]) => [handle, row.solana as string]),
 );
+
+function keepFill(row: TapeFill) {
+  return isSwapFill(row) && !isWrappedBase(row.token, row.symbol, row.name);
+}
 
 function seedKnownTraders(): Trader[] {
   return Object.entries(KNOWN_WALLETS).map(([handle, row]) => {
@@ -63,7 +68,7 @@ function seedKnownTraders(): Trader[] {
 function tradersFromTape(tape: TapeFill[]): Trader[] {
   const byHandle = new Map<string, TapeFill[]>();
   for (const row of tape) {
-    if (!row.handle || !isSwapFill(row)) continue;
+    if (!row.handle || !keepFill(row)) continue;
     const key = row.handle.toLowerCase();
     const bag = byHandle.get(key) || [];
     bag.push(row);
@@ -119,21 +124,7 @@ async function withTimeout<T>(job: Promise<T>, ms: number, fallback: T): Promise
 
 async function loadGmgnTape(traders: Trader[]): Promise<TapeFill[]> {
   if (typeof window !== "undefined") {
-    try {
-      const res = await fetch("/api/gmgn-activity", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ traders }),
-        cache: "no-store",
-        signal: AbortSignal.timeout(6_000),
-      });
-      if (res.ok) {
-        const json = (await res.json()) as { rows?: TapeFill[] };
-        return json.rows || [];
-      }
-    } catch {
-      return [];
-    }
+    return withTimeout(fetchGmgnWalletTape(traders), 6_000, []);
   }
   return withTimeout(fetchGmgnWalletTape(traders), 6_000, []);
 }
@@ -183,7 +174,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   }
 
   const index = traderIndex(traders);
-  const tape = tapeRaw.filter(isSwapFill).map((row) => ({
+  const tape = tapeRaw.filter(keepFill).map((row) => ({
     ...row,
     smartKind:
       row.smartKind ||
@@ -196,7 +187,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     withTimeout(fetchExternalFeeds(), 9_000, { fills: [] as TapeFill[], traders: [] as Trader[] }),
   ]);
   traders = mergeTraders(traders, feeds.traders);
-  const solTape = [...feeds.fills, ...solTapeRaw].sort((a, b) => b.ts - a.ts);
+  const solTape = [...feeds.fills, ...solTapeRaw].filter(keepFill).sort((a, b) => b.ts - a.ts);
   const solGems = gemsFromSolTape(solTape);
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 
