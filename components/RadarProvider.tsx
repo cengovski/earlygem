@@ -1,12 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { markFeeds } from "@/lib/health";
 import { recentLogs, type LogEvent } from "@/lib/log";
-import { fetchRadarBundle } from "@/lib/radar";
+import { bustRadarCache, fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
 
-const POLL_MS = 45_000;
+const POLL_MS = 25_000;
+const HANG_MS = 18_000;
+const STALE_RELOAD_MS = 70_000;
 
 type RadarState = {
   bundle: (RadarBundle & { meta: RadarMeta }) | null;
@@ -29,42 +31,64 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [tick, setTick] = useState(0);
+  const lastOk = useRef(Date.now());
+  const started = useRef(0);
+  const inflight = useRef(false);
+
+  const bump = useCallback(() => {
+    bustRadarCache();
+    setTick((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     let alive = true;
-    const first = !bundle;
-    if (first) setLoading(true);
-    const timer = window.setTimeout(() => {
-      if (alive) setLoading(false);
-    }, 12_000);
+    if (inflight.current) return;
+    inflight.current = true;
+    started.current = Date.now();
+    setLoading(true);
     fetchRadarBundle({ force: true })
       .then((next) => {
         if (!alive) return;
         setBundle(next);
+        lastOk.current = Date.now();
         markFeeds(next.tape, next.traders);
       })
       .catch(() => undefined)
       .finally(() => {
+        inflight.current = false;
         if (!alive) return;
-        window.clearTimeout(timer);
         setLogs(recentLogs(40));
         setLoading(false);
       });
     return () => {
       alive = false;
-      window.clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setTick((n) => n + 1), POLL_MS);
-    return () => window.clearInterval(id);
-  }, []);
+    const poll = window.setInterval(() => bump(), POLL_MS);
+    const watch = window.setInterval(() => {
+      const now = Date.now();
+      if (inflight.current && now - started.current > HANG_MS) {
+        inflight.current = false;
+        setLoading(false);
+        bump();
+        return;
+      }
+      if (!inflight.current && now - lastOk.current > STALE_RELOAD_MS) bump();
+    }, 5_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible" && Date.now() - lastOk.current > 20_000) bump();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(poll);
+      window.clearInterval(watch);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [bump]);
 
-  const reload = useCallback(() => setTick((n) => n + 1), []);
-
-  const value = useMemo(() => ({ bundle, loading, logs, reload }), [bundle, loading, logs, reload]);
+  const value = useMemo(() => ({ bundle, loading, logs, reload: bump }), [bundle, loading, logs, bump]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

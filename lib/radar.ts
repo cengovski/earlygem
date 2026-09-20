@@ -13,8 +13,9 @@ import { clearSnapshot, lastSnapshot, readSnapshot, writeSnapshot, type RadarBun
 import { gemsFromSwaps, isSwapFill } from "./trades";
 import type { TapeFill, Trader } from "./types";
 
-const FRESH_MS = 25_000;
+const FRESH_MS = 15_000;
 const STALE_MS = 8 * 60_000;
+const TAPE_MAX_AGE_MS = 20 * 60_000;
 
 const KNOWN_SOL = Object.fromEntries(
   Object.entries(KNOWN_WALLETS)
@@ -23,6 +24,8 @@ const KNOWN_SOL = Object.fromEntries(
 );
 
 function keepFill(row: TapeFill) {
+  if (row.side !== "buy") return false;
+  if (!row.ts || Date.now() - row.ts > TAPE_MAX_AGE_MS) return false;
   return isSwapFill(row) && !isWrappedBase(row.token, row.symbol, row.name);
 }
 
@@ -173,14 +176,14 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
       (row.handle ? index.get(row.handle.toLowerCase())?.kind || null : null),
   }));
 
-  const feeds = await withTimeout(fetchExternalFeeds(), 14_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
+  const feeds = await withTimeout(fetchExternalFeeds(), 12_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
   traders = mergeTraders(traders, feeds.traders);
   const solTape = feeds.fills.filter(keepFill).sort((a, b) => b.ts - a.ts);
   const solGems = gemsFromSolTape(solTape);
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 
   const rawGems = rankGems([...gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape), ...solGems]);
-  const gems = await withTimeout(attachGmgnSecurity(rawGems, 16), 10_000, rawGems);
+  const gems = await withTimeout(attachGmgnSecurity(rawGems, 8), 8_000, rawGems);
   const featured = featuredGems(gems, 6);
   const merged = [...solTape, ...tape].sort((a, b) => b.ts - a.ts).slice(0, 400);
   const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 80);
