@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { binanceConfigured, signBinanceJobs } from "@/lib/binance";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "fra1";
 
 export async function GET() {
-  return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!binanceConfigured()) {
+    return NextResponse.json({ tickets: [], error: "binance_env_yok" }, { status: 503 });
+  }
+  const tickets = await signBinanceJobs();
+  return NextResponse.json({ tickets });
 }
