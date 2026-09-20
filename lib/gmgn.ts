@@ -5,6 +5,8 @@ const DEMO_KEY = "gmgn_solbscbaseethmonadtron";
 const MIN_GAP_MS = 900;
 const MAX_JOBS = 3;
 const MIN_USD = 8;
+const MAX_AGE_MS = 8 * 60 * 60 * 1000;
+const STOCK = /^(googlb?|gmeb?|qqqb?|nvdab?|tslab?|aaplb?|msftb?|metab?|amznb?|gstock|sndk|qqq|spy|iwm)$/i;
 
 export const GMGN_FOMO_EVM: ChainId[] = ["robinhood", "base", "bsc", "ethereum", "monad"];
 
@@ -93,20 +95,25 @@ function fillFromActivity(row: GmgnActivity, trader: Trader): TapeFill | null {
   if (!token) return null;
   const usd = num(row.cost_usd);
   if (usd > 0 && usd < MIN_USD) return null;
+  const symbol = (row.token?.symbol || "???").trim();
+  if (STOCK.test(symbol)) return null;
   const chain = chainFromGmgn(row.chain) || "solana";
-  const ts = row.timestamp || 0;
+  const rawTs = row.timestamp || 0;
+  const ts = rawTs > 10_000_000_000 ? rawTs : rawTs * 1000;
+  if (!ts || Date.now() - ts > MAX_AGE_MS) return null;
   const slug = gmgnSlug(chain) || "sol";
+  const name = (row.token?.name || symbol).trim();
   return {
     id: `gmgn-${row.tx_hash || token}-${ts}`,
-    ts: ts > 10_000_000_000 ? ts : ts * 1000,
+    ts,
     chain,
     side: kind,
     usd,
     amount: num(row.token_amount),
     price: num(row.price_usd) || null,
     token,
-    symbol: row.token?.symbol || "???",
-    name: row.token?.name || row.token?.symbol || "token",
+    symbol,
+    name: name.toLowerCase() === symbol.toLowerCase() ? symbol : name,
     mcap: null,
     liquidity: null,
     change24: null,
