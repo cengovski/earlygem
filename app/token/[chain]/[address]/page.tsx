@@ -3,11 +3,12 @@ import { ChainBadge } from "@/components/Badge";
 import { GemCard } from "@/components/GemCard";
 import { Shell } from "@/components/Shell";
 import { TapeTable } from "@/components/TapeTable";
-import { dexUrl, explorerToken, shortAddr, usd } from "@/lib/format";
+import { TokenLinks } from "@/components/TokenLinks";
+import { explorerToken, shortAddr, usd } from "@/lib/format";
 import { fetchRadarBundle } from "@/lib/sources";
 import type { ChainId } from "@/lib/types";
 
-export const revalidate = 20;
+export const dynamic = "force-dynamic";
 const CHAINS: ChainId[] = ["robinhood", "solana", "base", "bsc", "ethereum"];
 
 export default async function TokenPage({ params }: { params: Promise<{ chain: string; address: string }> }) {
@@ -25,14 +26,12 @@ export default async function TokenPage({ params }: { params: Promise<{ chain: s
         <ChainBadge chain={c} />
         <span className="font-mono text-xs text-mute break-all">{address}</span>
         <a className="hover:text-accent" href={explorerToken(c, address)} target="_blank" rel="noreferrer">explorer</a>
-        <a className="hover:text-accent" href={dexUrl(c, address, gem?.pairUrl)} target="_blank" rel="noreferrer">dexscreener</a>
         {gem ? <span className="num text-mute">mcap {usd(gem.mcap)}</span> : null}
       </div>
-      {gem ? (
-        <div className="mb-6 max-w-md"><GemCard gem={gem} /></div>
-      ) : (
-        <p className="mb-6 text-sm text-mute">Bu token keşif listesinde yok; tape kesiti aşağıda.</p>
-      )}
+      <div className="mb-6">
+        <TokenLinks chain={c} address={address} pairUrl={gem?.pairUrl} />
+      </div>
+      {gem ? <div className="mb-6 max-w-md"><GemCard gem={gem} /></div> : <p className="mb-6 text-sm text-mute">Keşif listesinde yok; tape aşağıda.</p>}
       <h2 className="mb-3 text-lg font-medium">Bu token tape</h2>
       <TapeTable rows={rows.slice(0, 40)} />
     </Shell>
