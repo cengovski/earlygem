@@ -22,17 +22,17 @@ export type BinanceTicket = {
 };
 
 const JOBS: Array<{ id: string; path: string; query: Record<string, string> }> = [
-  { id: "smart_trades", path: "/api/v1/dex/market/address-tracker/trades", query: { trackerType: "1", tradeType: "1,2" } },
-  { id: "kol_trades", path: "/api/v1/dex/market/address-tracker/trades", query: { trackerType: "2", tradeType: "1,2" } },
+  { id: "smart_trades", path: "/api/v1/dex/market/address-tracker/trades", query: { trackerType: "1" } },
+  { id: "kol_trades", path: "/api/v1/dex/market/address-tracker/trades", query: { trackerType: "2" } },
   {
     id: "smart_board",
     path: "/api/v1/dex/market/leaderboard/list",
-    query: { binanceChainId: "CT_501", timeFrame: "1", sortBy: "1", walletType: "1", limit: "20" },
+    query: { binanceChainId: "56", timeFrame: "1", sortBy: "1", limit: "50" },
   },
   {
     id: "kol_board",
     path: "/api/v1/dex/market/leaderboard/list",
-    query: { binanceChainId: "CT_501", timeFrame: "1", sortBy: "1", walletType: "2", limit: "20" },
+    query: { binanceChainId: "CT_501", timeFrame: "1", sortBy: "1", limit: "50" },
   },
 ];
 
@@ -208,6 +208,11 @@ function traderFromWallet(row: BnWallet, kind: "smart" | "kol"): Trader | null {
   };
 }
 
+function boardRows(payload: Record<string, unknown> | null | undefined): BnWallet[] {
+  const data = (payload?.data || {}) as { items?: BnWallet[]; list?: BnWallet[] };
+  return data.items || data.list || [];
+}
+
 export function parseBinancePayloads(rows: Record<string, Record<string, unknown> | null>) {
   const fills: TapeFill[] = [];
   const traders: Trader[] = [];
@@ -221,46 +226,29 @@ export function parseBinancePayloads(rows: Record<string, Record<string, unknown
     const fill = toFill(row, "kol");
     if (fill) fills.push(fill);
   }
-  const smartWallets = (((rows.smart_board?.data as { list?: BnWallet[] } | undefined)?.list) || []) as BnWallet[];
-  const kolWallets = (((rows.kol_board?.data as { list?: BnWallet[] } | undefined)?.list) || []) as BnWallet[];
-  for (const row of smartWallets) {
+  for (const row of boardRows(rows.smart_board)) {
     const t = traderFromWallet(row, "smart");
     if (t) traders.push(t);
   }
-  for (const row of kolWallets) {
+  for (const row of boardRows(rows.kol_board)) {
     const t = traderFromWallet(row, "kol");
     if (t) traders.push(t);
   }
-  return { fills: fills.sort((a, b) => b.ts - a.ts), traders, code: Number(rows.smart_trades?.code || rows.kol_trades?.code || 0) };
+  return {
+    fills: fills.sort((a, b) => b.ts - a.ts),
+    traders,
+    code: Number(rows.smart_trades?.code ?? rows.kol_trades?.code ?? rows.smart_board?.code ?? 0),
+  };
 }
 
-export async function loadBinanceFeedsDirect(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
+export async function loadBinanceFeedsDirect(): Promise<{ fills: TapeFill[]; traders: Trader[]; code?: number }> {
   if (!binanceConfigured()) return { fills: [], traders: [] };
   try {
-    const [smartTrades, kolTrades, smartBoard, kolBoard] = await Promise.all([
-      signedGet("/api/v1/dex/market/address-tracker/trades", { trackerType: "1", tradeType: "1,2" }),
-      signedGet("/api/v1/dex/market/address-tracker/trades", { trackerType: "2", tradeType: "1,2" }),
-      signedGet("/api/v1/dex/market/leaderboard/list", {
-        binanceChainId: "CT_501",
-        timeFrame: "1",
-        sortBy: "1",
-        walletType: "1",
-        limit: "20",
-      }),
-      signedGet("/api/v1/dex/market/leaderboard/list", {
-        binanceChainId: "CT_501",
-        timeFrame: "1",
-        sortBy: "1",
-        walletType: "2",
-        limit: "20",
-      }),
-    ]);
-    return parseBinancePayloads({
-      smart_trades: smartTrades,
-      kol_trades: kolTrades,
-      smart_board: smartBoard,
-      kol_board: kolBoard,
-    });
+    const bag: Record<string, Record<string, unknown> | null> = {};
+    for (const job of JOBS) {
+      bag[job.id] = await signedGet(job.path, job.query);
+    }
+    return parseBinancePayloads(bag);
   } catch {
     return { fills: [], traders: [] };
   }
