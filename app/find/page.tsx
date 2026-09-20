@@ -5,7 +5,6 @@ import { Suspense, useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { explorerWallet } from "@/lib/format";
 import { rememberSol } from "@/lib/solmap";
-import { findTrader } from "@/lib/sources";
 import type { FindResult } from "@/lib/types";
 
 function FindInner() {
@@ -18,8 +17,9 @@ function FindInner() {
   useEffect(() => {
     if (!q) return;
     setBusy(true);
-    findTrader(q)
-      .then((row) => {
+    fetch("/api/find?q=" + encodeURIComponent(q))
+      .then((res) => res.json())
+      .then((row: FindResult) => {
         setResult(row);
         if (row.handle && row.solana) rememberSol(row.handle, row.solana);
       })
