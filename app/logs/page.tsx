@@ -2,29 +2,33 @@ import Link from "next/link";
 import { RefreshButton } from "@/components/RefreshButton";
 import { Shell } from "@/components/Shell";
 import { recentLogs } from "@/lib/log";
-import { fetchPulseStatus, fetchPulseTape, fetchPulseTraders, fetchSolanaGems } from "@/lib/sources";
+import { fetchRadarBundle } from "@/lib/radar";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export default async function LogsPage() {
-  const [status, traders, tape, dex] = await Promise.all([
-    fetchPulseStatus(),
-    fetchPulseTraders(),
-    fetchPulseTape(30),
-    fetchSolanaGems(),
-  ]);
+  const bundle = await fetchRadarBundle({ force: true });
   const logs = recentLogs(40);
   return (
-    <Shell title="Kaynak log" subtitle="Bu istekte yapılan fetch'ler. JSON: /api/debug">
+    <Shell title="Kaynak log" subtitle="Bu istekte yapılan fetch'ler. Vercel isolate belleği kısa ömürlüdür; taze probe aşağıda.">
       <div className="mb-4 flex items-center gap-3">
-        <RefreshButton />
-        <Link href="/api/debug" className="text-sm text-mute hover:text-accent">/api/debug JSON</Link>
+        <RefreshButton label="zorla yenile" />
+        <Link href="/api/debug" className="text-sm text-mute hover:text-accent">
+          /api/debug JSON
+        </Link>
+      </div>
+      <div className="mb-4 text-xs text-mute">
+        {bundle.meta.fetchedAt} · traders={bundle.meta.tradersSource} · cache={String(bundle.meta.fromCache)} ·{" "}
+        {bundle.meta.errors.join(" · ") || "hata yok"}
       </div>
       <div className="mb-6 grid gap-2 sm:grid-cols-4">
-        <div className="rounded-xl border border-line bg-surface p-3 text-sm">pulse {status ? "ok" : "yok"} · lag {status?.lagSeconds ?? "—"}s</div>
-        <div className="rounded-xl border border-line bg-surface p-3 text-sm">trader {traders.length}</div>
-        <div className="rounded-xl border border-line bg-surface p-3 text-sm">tape {tape.length}</div>
-        <div className="rounded-xl border border-line bg-surface p-3 text-sm">sol/base {dex.length}</div>
+        <div className="rounded-xl border border-line bg-surface p-3 text-sm">
+          pulse {bundle.status ? "ok" : "yok"} · lag {bundle.status?.lagSeconds ?? "—"}s
+        </div>
+        <div className="rounded-xl border border-line bg-surface p-3 text-sm">trader {bundle.traders.length}</div>
+        <div className="rounded-xl border border-line bg-surface p-3 text-sm">tape {bundle.tape.length}</div>
+        <div className="rounded-xl border border-line bg-surface p-3 text-sm">sol/base {bundle.dexWatch.length}</div>
       </div>
       <div className="overflow-x-auto rounded-xl border border-line">
         <table className="min-w-[720px] w-full text-left text-xs">

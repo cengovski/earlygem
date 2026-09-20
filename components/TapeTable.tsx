@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ago, compact, dexUrl, shortAddr, usd } from "@/lib/format";
+import { ago, compact, shortAddr, usd } from "@/lib/format";
 import type { TapeFill } from "@/lib/types";
 import { ChainBadge, SideBadge, SmartBadge } from "./Badge";
+import { TokenLinks } from "./TokenLinks";
 
 export function TapeTable({ rows }: { rows: TapeFill[] }) {
   if (!rows.length) {
@@ -30,12 +31,20 @@ export function TapeTable({ rows }: { rows: TapeFill[] }) {
           {rows.map((r) => (
             <tr key={r.id} className="tape-row border-t border-line">
               <td className="num px-3 py-2 text-mute">{ago(r.ts)}</td>
-              <td className="px-3 py-2"><ChainBadge chain={r.chain} /></td>
-              <td className="px-3 py-2"><SideBadge side={r.side} /></td>
               <td className="px-3 py-2">
-                <Link href={`/token/${r.chain}/${r.token}`} className="font-medium hover:text-accent">{r.symbol}</Link>
+                <ChainBadge chain={r.chain} />
+              </td>
+              <td className="px-3 py-2">
+                <SideBadge side={r.side} />
+              </td>
+              <td className="px-3 py-2">
+                <Link href={`/token/${r.chain}/${r.token}`} className="font-medium hover:text-accent">
+                  {r.symbol}
+                </Link>
                 {r.firstBuy ? (
-                  <span className="ml-2 rounded bg-accent px-1.5 py-0.5 font-mono text-[10px] text-[#16140c]">FIRST</span>
+                  <span className="ml-2 rounded bg-accent px-1.5 py-0.5 font-mono text-[10px] text-[#16140c]">
+                    FIRST
+                  </span>
                 ) : null}
                 <div className="text-[11px] text-mute">{r.name}</div>
               </td>
@@ -43,7 +52,9 @@ export function TapeTable({ rows }: { rows: TapeFill[] }) {
               <td className="num px-3 py-2 text-mute">{usd(r.mcap)}</td>
               <td className="px-3 py-2">
                 {r.handle ? (
-                  <a href={r.profileUrl || `https://fomo.family/profile/${r.handle}`} className="hover:text-accent">@{r.handle}</a>
+                  <a href={r.profileUrl || `https://fomo.family/profile/${r.handle}`} className="hover:text-accent">
+                    @{r.handle}
+                  </a>
                 ) : (
                   <span className="font-mono text-xs text-mute">{shortAddr(r.wallet)}</span>
                 )}
@@ -53,7 +64,7 @@ export function TapeTable({ rows }: { rows: TapeFill[] }) {
                 </div>
               </td>
               <td className="px-3 py-2 text-xs">
-                <a className="text-mute hover:text-accent" href={dexUrl(r.chain, r.token, r.pairUrl)} target="_blank" rel="noreferrer">dex</a>
+                <TokenLinks chain={r.chain} address={r.token} pairUrl={r.pairUrl} />
               </td>
             </tr>
           ))}
