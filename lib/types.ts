@@ -69,6 +69,10 @@ export type Gem = {
   lastSmartTs: number | null;
   bestRank: number | null;
   isStock: boolean;
+  launchpad?: string | null;
+  honeypot?: boolean | null;
+  securityOk?: boolean;
+  sellTax?: number | null;
 };
 
 export type Trader = {
