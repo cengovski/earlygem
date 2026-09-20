@@ -1,40 +1,35 @@
 import { NextResponse } from "next/server";
-import { alertKeyboard, formatAlertHtml, type AlertHit } from "@/lib/alert-msg";
+import { alertKeyboard, formatAlertHtml, isWrappedBase, type AlertHit } from "@/lib/alert-msg";
+import { requireSecret } from "@/lib/auth";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 import type { ChainId } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const preferredRegion = "fra1";
 
+const CHAINS: ChainId[] = ["robinhood", "solana", "base", "bsc", "ethereum", "monad"];
+const TOKEN_RE = /^[A-Za-z0-9]{32,64}$/;
+
 export async function POST(req: Request) {
+  const denied = requireSecret(req);
+  if (denied) return denied;
   if (!telegramConfigured()) {
     return NextResponse.json({ ok: false, error: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID yok" }, { status: 400 });
   }
   const body = (await req.json().catch(() => null)) as (Partial<AlertHit> & { test?: boolean; windowMin?: number }) | null;
   if (body?.test) {
-    const demo: AlertHit = {
-      token: "So11111111111111111111111111111111111111112",
-      chain: "solana",
-      symbol: "SOL",
-      name: "Wrapped SOL",
-      usd: 4200,
-      buys: 4,
-      windowMin: 3,
-      mcap: 80_000_000_000,
-      liquidity: 1_200_000,
-      change24: 2.4,
-      handles: ["demo"],
-    };
-    const sent = await sendTelegram(formatAlertHtml(demo), undefined, {
-      html: true,
-      keyboard: alertKeyboard(demo.chain, demo.token),
-    });
+    const sent = await sendTelegram("earlygem test: bot bağlı.");
     return NextResponse.json(sent);
   }
+  const chain = body?.chain as ChainId | undefined;
   const token = body?.token || "";
-  const chain = (body?.chain || "solana") as ChainId;
   const usd = Number(body?.usd || 0);
-  if (!token || usd <= 0) return NextResponse.json({ ok: false, error: "bad_payload" }, { status: 400 });
+  if (!chain || !CHAINS.includes(chain) || !TOKEN_RE.test(token) || usd <= 0) {
+    return NextResponse.json({ ok: false, error: "bad_payload" }, { status: 400 });
+  }
+  if (isWrappedBase(token, body?.symbol, body?.name)) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "wrapped" });
+  }
   const hit: AlertHit = {
     token,
     chain,

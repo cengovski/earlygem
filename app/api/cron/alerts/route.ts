@@ -1,24 +1,23 @@
 import { NextResponse } from "next/server";
 import { alertKeyboard, clusterHits, formatAlertHtml } from "@/lib/alert-msg";
+import { requireSecret } from "@/lib/auth";
 import { fetchRadarBundle } from "@/lib/radar";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
-import { DEFAULT_RULE } from "@/lib/watch";
+import { serverRule } from "@/lib/watch";
 
 export const dynamic = "force-dynamic";
 export const preferredRegion = "fra1";
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
-  const auth = req.headers.get("authorization");
-  const cron = process.env.CRON_SECRET;
-  if (cron && auth !== `Bearer ${cron}`) {
-    return NextResponse.json({ ok: false }, { status: 401 });
-  }
+  const denied = requireSecret(req);
+  if (denied) return denied;
   if (!telegramConfigured()) {
     return NextResponse.json({ ok: false, error: "telegram_env_yok" });
   }
+  const rule = serverRule();
   const bundle = await fetchRadarBundle({ force: true });
-  const hits = clusterHits(bundle.tape, DEFAULT_RULE.windowMin, DEFAULT_RULE.minUsd, DEFAULT_RULE.minBuys);
+  const hits = clusterHits(bundle.tape, rule.windowMin, rule.minUsd, rule.minBuys);
   let sent = 0;
   for (const hit of hits) {
     const out = await sendTelegram(formatAlertHtml(hit), `${hit.chain}:${hit.token.toLowerCase()}`, {

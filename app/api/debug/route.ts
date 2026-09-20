@@ -1,16 +1,19 @@
-import { recentLogs } from "@/lib/log";
+import { NextResponse } from "next/server";
 import { fetchSolWatch } from "@/lib/dexwatch";
+import { recentLogs } from "@/lib/log";
 import { PULSE_ORIGINS } from "@/lib/pulse";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 export async function GET() {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
   const started = Date.now();
   const dexWatch = await fetchSolWatch().catch(() => []);
-  return Response.json({
+  return NextResponse.json({
     ok: true,
-    note: "Bu endpoint Vercel IP'den çalışır. CF worker/fomopulse burada 403 olabilir. Pulse ve GMGN tarayıcıda (anasayfa) gelir.",
     ms: Date.now() - started,
     pulseOrigins: PULSE_ORIGINS,
     dexWatch: dexWatch.length,
