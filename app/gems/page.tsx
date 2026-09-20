@@ -14,10 +14,7 @@ function GemsInner() {
   const params = useSearchParams();
   const chain = params.get("chain") as ChainId | null;
   return (
-    <Shell
-      title="Gem radar — ağ ağ"
-      subtitle="Her şerit ayrı kaynak. RH = FOMO tape alış. SOL/BASE/BSC/ETH/MON = DexScreener, handle yok."
-    >
+    <Shell title="Gem radar — ağ ağ" subtitle="RH tape alış. SOL = FOMO SOL cüzdan swap’i, yoksa Dex. Diğerleri Dex.">
       <PulseGate>
         {(bundle) => {
           const lanes = chain ? CHAIN_LANES.filter((l) => l.id === chain) : CHAIN_LANES;
@@ -26,24 +23,18 @@ function GemsInner() {
               <SourceBanner meta={bundle.meta} />
               <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
                 <RefreshButton />
-                <a href="/gems" className="rounded-md border border-line px-3 py-1 text-mute hover:text-ink">
-                  tüm ağlar
-                </a>
+                <a href="/gems" className="rounded-md border border-line px-3 py-1 text-mute hover:text-ink">tüm ağlar</a>
                 {CHAIN_LANES.map((l) => (
-                  <a
-                    key={l.id}
-                    href={`/gems?chain=${l.id}`}
-                    className="rounded-md border border-line px-3 py-1 text-mute hover:text-ink"
-                  >
-                    {l.short}
-                  </a>
+                  <a key={l.id} href={`/gems?chain=${l.id}`} className="rounded-md border border-line px-3 py-1 text-mute hover:text-ink">{l.short}</a>
                 ))}
               </div>
               {lanes.map((lane) => {
                 const gems =
-                  lane.source === "pulse"
+                  lane.id === "robinhood"
                     ? bundle.gems.filter((g) => g.chain === "robinhood")
-                    : bundle.dexWatch.filter((g) => g.chain === lane.id);
+                    : lane.id === "solana"
+                      ? [...(bundle.solGems || []), ...bundle.dexWatch.filter((g) => g.chain === "solana")]
+                      : bundle.dexWatch.filter((g) => g.chain === lane.id);
                 return <ChainLaneSection key={lane.id} lane={lane} gems={gems} />;
               })}
             </>
