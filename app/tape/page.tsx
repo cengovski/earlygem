@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { AlertRadar } from "@/components/AlertRadar";
 import { Kpis } from "@/components/Kpis";
 import { PulseGate } from "@/components/PulseGate";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -27,7 +28,12 @@ function TapeInner() {
                 <a href="/tape?view=sol" className="rounded-md border border-line px-3 py-1 text-mute hover:text-ink">SOL tape</a>
                 <a href="/tape?view=all" className="rounded-md border border-line px-3 py-1 text-mute hover:text-ink">tüm evren</a>
               </div>
-              <TapeTable rows={rows} />
+              <div className="flex flex-col gap-4 lg:flex-row">
+                <div className="min-w-0 flex-1">
+                  <TapeTable rows={rows} />
+                </div>
+                <AlertRadar tape={bundle.tape} />
+              </div>
             </>
           );
         }}
