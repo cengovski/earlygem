@@ -2,11 +2,10 @@ import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const HOST = "https://openapi.gmgn.ai";
 const DEMO_KEY = "gmgn_solbscbaseethmonadtron";
-const MIN_GAP_MS = 850;
-const MAX_JOBS = 8;
+const MIN_GAP_MS = 900;
+const MAX_JOBS = 3;
 const MIN_USD = 8;
 
-/** FOMO app ∩ GMGN OpenAPI */
 export const GMGN_FOMO_EVM: ChainId[] = ["robinhood", "base", "bsc", "ethereum", "monad"];
 
 export function gmgnApiKey() {
@@ -71,12 +70,10 @@ async function gmgnGet(path: string, query: Record<string, string | number | und
   const res = await fetch(`${HOST}${path}?${params.toString()}`, {
     headers: { "X-APIKEY": gmgnApiKey(), Accept: "application/json" },
     cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
   });
   const json = (await res.json().catch(() => null)) as GmgnEnvelope | null;
   if (res.status === 429 || json?.error === "RATE_LIMIT_EXCEEDED" || json?.error === "RATE_LIMIT_BANNED") {
-    const reset = json?.reset_at ? json.reset_at * 1000 : Date.now() + 4000;
-    const pause = Math.min(Math.max(reset - Date.now(), 1500), 8000);
-    await sleep(pause);
     return null;
   }
   if (!res.ok || !json) return null;
@@ -131,7 +128,7 @@ function fillFromActivity(row: GmgnActivity, trader: Trader): TapeFill | null {
 type Job = { chain: ChainId; wallet: string; trader: Trader };
 
 function planJobs(traders: Trader[]): Job[] {
-  const watched = traders.filter((t) => t.kind === "kol" || t.kind === "smart").slice(0, 6);
+  const watched = traders.filter((t) => t.kind === "kol" || t.kind === "smart" || t.solana || t.address).slice(0, 4);
   const extra = GMGN_FOMO_EVM[evmCursor % GMGN_FOMO_EVM.length];
   evmCursor += 1;
   const jobs: Job[] = [];
@@ -144,8 +141,6 @@ function planJobs(traders: Trader[]): Job[] {
   };
   for (const trader of watched) {
     if (trader.solana) push({ chain: "solana", wallet: trader.solana, trader });
-  }
-  for (const trader of watched) {
     if (trader.address) push({ chain: extra, wallet: trader.address, trader });
   }
   return jobs;
@@ -161,7 +156,7 @@ export async function fetchGmgnWalletTape(traders: Trader[]): Promise<TapeFill[]
     const raw = await gmgnGet("/v1/user/wallet_activity", {
       chain: slug,
       wallet_address: job.wallet,
-      limit: 15,
+      limit: 12,
     });
     const rows = raw?.data?.activities || raw?.data?.list || [];
     for (const row of rows) {

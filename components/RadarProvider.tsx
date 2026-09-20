@@ -5,7 +5,7 @@ import { recentLogs, type LogEvent } from "@/lib/log";
 import { fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
 
-const POLL_MS = 30_000;
+const POLL_MS = 45_000;
 
 type RadarState = {
   bundle: (RadarBundle & { meta: RadarMeta }) | null;
@@ -33,22 +33,24 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     const first = !bundle;
     if (first) setLoading(true);
+    const timer = window.setTimeout(() => {
+      if (alive) setLoading(false);
+    }, 12_000);
     fetchRadarBundle({ force: true })
       .then((next) => {
         if (!alive) return;
         setBundle(next);
       })
-      .catch(() => {
-        if (!alive) return;
-        if (first) setBundle(null);
-      })
+      .catch(() => undefined)
       .finally(() => {
         if (!alive) return;
+        window.clearTimeout(timer);
         setLogs(recentLogs(40));
         setLoading(false);
       });
     return () => {
       alive = false;
+      window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
