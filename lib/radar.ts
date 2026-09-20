@@ -180,8 +180,9 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
 
   const gems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
   const featured = featuredGems(gems, 6);
-  const smartTape = [...solTape.filter((r) => isWatchedKind(r.smartKind)), ...tape.filter((r) => isWatchedKind(r.smartKind))].slice(0, 40);
-  const bundle: RadarBundle = { traders, tape: [...solTape, ...tape], gems, featured, smartTape, dexWatch, status, solTape, solGems };
+  const merged = [...solTape, ...tape].sort((a, b) => b.ts - a.ts);
+  const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 40);
+  const bundle: RadarBundle = { traders, tape: merged, gems, featured, smartTape, dexWatch, status, solTape, solGems };
   const meta: RadarMeta = {
     fetchedAt: new Date().toISOString(),
     ageMs: 0,
