@@ -4,7 +4,7 @@ import { featuredGems, rankGems, scoreGem } from "./score";
 import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
 import type { ChainId, FindResult, Gem, GemBuyer, PulseStatus, SmartKind, TapeFill, Trader } from "./types";
 
-const PULSE = "https://fomopulse.app";
+const PULSE = (process.env.PULSE_ORIGIN || "https://damp-butterfly-34a4.cengovski.workers.dev").replace(/\/$/, "");
 const DEX = "https://api.dexscreener.com";
 const FOMOAPI = "https://api.fomoapi.io";
 const JUNK_SYMBOL = new Set(["sol", "wsol", "usdc", "usdt", "eth", "weth", "bnb", "wbnb", "btc", "wbtc", "pump", "pumpfun"]);
