@@ -1,5 +1,5 @@
 import { recentLogs } from "@/lib/log";
-import { fetchRadarBundle } from "@/lib/sources";
+import { fetchRadarBundle } from "@/lib/radar";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";

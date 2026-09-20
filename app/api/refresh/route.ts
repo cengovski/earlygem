@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { logEvent } from "@/lib/log";
-import { bustRadarCache } from "@/lib/sources";
+import { bustRadarCache } from "@/lib/radar";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
