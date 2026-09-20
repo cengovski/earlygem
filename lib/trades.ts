@@ -8,16 +8,21 @@ export const MIN_TRADE_USD = 8;
 export function isSwapFill(row: {
   side?: string | null;
   usd?: number | null;
+  amount?: number | null;
   flags?: string[] | null;
   source?: string | null;
+  chain?: string | null;
 }): boolean {
   if (row.side !== "buy" && row.side !== "sell") return false;
-  if ((row.usd || 0) < MIN_TRADE_USD) return false;
   const flags = (row.flags || []).map((f) => f.toLowerCase());
   if (flags.some((f) => f.includes("transfer") || f.includes("airdrop") || f.includes("gift") || f.includes("inflow"))) {
     return false;
   }
-  return true;
+  if ((row.usd || 0) >= MIN_TRADE_USD) return true;
+  if (row.source === "fomopulse" || row.chain === "robinhood") {
+    return (row.amount || 0) > 0 || true;
+  }
+  return false;
 }
 
 function key(handle: string, token: string) {
