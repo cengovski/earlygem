@@ -1,3 +1,4 @@
+import { clusterHits, type AlertHit } from "./alert-msg";
 import type { TapeFill } from "./types";
 
 const fired = new Map<string, number>();
@@ -31,18 +32,8 @@ export function saveRule(rule: AlertRule) {
   window.localStorage.setItem("earlygem.alert", JSON.stringify(rule));
 }
 
-export function clustersFromTape(tape: TapeFill[], rule: AlertRule) {
-  const since = Date.now() - rule.windowMin * 60_000;
-  const bag = new Map<string, { token: string; chain: TapeFill["chain"]; symbol: string; usd: number; buys: number }>();
-  for (const row of tape) {
-    if (row.side !== "buy" || row.ts < since) continue;
-    const key = `${row.chain}:${row.token.toLowerCase()}`;
-    const prev = bag.get(key) || { token: row.token, chain: row.chain, symbol: row.symbol, usd: 0, buys: 0 };
-    prev.usd += row.usd || 0;
-    prev.buys += 1;
-    bag.set(key, prev);
-  }
-  return [...bag.values()].filter((row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys);
+export function clustersFromTape(tape: TapeFill[], rule: AlertRule): AlertHit[] {
+  return clusterHits(tape, rule.windowMin, rule.minUsd, rule.minBuys);
 }
 
 export async function fireTapeAlerts(tape: TapeFill[]) {
