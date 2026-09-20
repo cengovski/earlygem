@@ -6,6 +6,7 @@ const LINKS = [
   { href: "/tape", label: "Tape" },
   { href: "/gems", label: "Gemler" },
   { href: "/traders", label: "Traderlar" },
+  { href: "/whales", label: "Whales" },
   { href: "/find", label: "Cüzdan bul" },
   { href: "/logs", label: "Log" },
 ];
@@ -50,8 +51,7 @@ export function Shell({
         {children}
       </main>
       <footer className="mx-auto max-w-7xl px-4 pb-10 text-xs text-mute">
-        Bağımsız araç. fomo.family / Robinhood ile bağlı değil. Profil adresi ≠ trading cüzdanı.
-        Smart küme: fomopulse RH tape. Diğer FOMO ağları (SOL/BASE/BSC/ETH/MON) DexScreener izleme — handle yok.
+        Bağımsız araç. FOMO + GMGN KOL/smart + Pump.fun roster + Axiom etiketli cüzdanlar.
       </footer>
     </div>
   );
