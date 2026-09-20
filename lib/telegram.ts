@@ -1,5 +1,5 @@
 const sent = new Map<string, number>();
-const COOL_MS = 15 * 60_000;
+const COOL_MS = 8 * 60_000;
 
 function token() {
   return process.env.TELEGRAM_BOT_TOKEN || "";
