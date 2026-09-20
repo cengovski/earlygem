@@ -1,4 +1,4 @@
-export type ChainId = "robinhood" | "solana" | "base" | "bsc" | "ethereum";
+export type ChainId = "robinhood" | "solana" | "base" | "bsc" | "ethereum" | "monad";
 
 export type TapeSide = "buy" | "sell";
 

@@ -1,10 +1,21 @@
 import type { ChainId } from "./types";
 import { dexUrl } from "./format";
 
+/** GMGN path: gmgn.ai/{slug}/token/{address} */
 function gmgnSlug(chain: ChainId): string {
   if (chain === "solana") return "sol";
   if (chain === "ethereum") return "eth";
-  if (chain === "robinhood") return "rhc";
+  if (chain === "robinhood") return "robinhood";
+  if (chain === "monad") return "monad";
+  return chain;
+}
+
+/** BasedBot web: basedbot.app/token/{slug}/{address} */
+function basedSlug(chain: ChainId): string {
+  if (chain === "solana") return "sol";
+  if (chain === "ethereum") return "eth";
+  if (chain === "robinhood") return "robinhood";
+  if (chain === "monad") return "monad";
   return chain;
 }
 
@@ -19,9 +30,9 @@ export function tokenToolLinks(chain: ChainId, address: string, pairUrl?: string
   return [
     { label: "DexScreener", href: dexUrl(chain, address, pairUrl) },
     { label: "GMGN", href: `https://gmgn.ai/${gmgnSlug(chain)}/token/${address}` },
+    { label: "BasedBot", href: `https://basedbot.app/token/${basedSlug(chain)}/${address}` },
     { label: "BananaGun", href: banana },
     { label: "Maestro", href: `https://t.me/MaestroSniperBot?start=${address}` },
-    { label: "BasedBot", href: `https://t.me/based_eth_bot?start=${address}` },
     { label: "Twitter", href: `https://twitter.com/search?q=${q}` },
   ];
 }

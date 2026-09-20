@@ -50,6 +50,7 @@ export function chainLabel(chain: ChainId): string {
   if (chain === "solana") return "SOL";
   if (chain === "base") return "BASE";
   if (chain === "bsc") return "BSC";
+  if (chain === "monad") return "MON";
   return "ETH";
 }
 
@@ -58,12 +59,14 @@ export function explorerWallet(chain: ChainId, addr: string): string {
   if (chain === "robinhood") return `https://robinhoodchain.blockscout.com/address/${addr}`;
   if (chain === "base") return `https://basescan.org/address/${addr}`;
   if (chain === "bsc") return `https://bscscan.com/address/${addr}`;
+  if (chain === "monad") return `https://monadvision.com/address/${addr}`;
   return `https://etherscan.io/address/${addr}`;
 }
 
 export function explorerToken(chain: ChainId, addr: string): string {
   if (chain === "solana") return `https://solscan.io/token/${addr}`;
   if (chain === "robinhood") return `https://robinhoodchain.blockscout.com/token/${addr}`;
+  if (chain === "monad") return `https://monadvision.com/token/${addr}`;
   return `https://dexscreener.com/${chain}/${addr}`;
 }
 
