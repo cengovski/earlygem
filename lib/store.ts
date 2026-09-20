@@ -8,6 +8,8 @@ export type RadarBundle = {
   smartTape: TapeFill[];
   dexWatch: Gem[];
   status: PulseStatus | null;
+  solTape: TapeFill[];
+  solGems: Gem[];
 };
 
 export type RadarMeta = {
@@ -33,19 +35,18 @@ function bucket() {
   return g.__earlygemStore;
 }
 
+function withSol(bundle: RadarBundle): RadarBundle {
+  return { ...bundle, solTape: bundle.solTape || [], solGems: bundle.solGems || [] };
+}
+
 export function readSnapshot(maxAgeMs: number): { bundle: RadarBundle; meta: RadarMeta } | null {
   const slot = bucket().slot;
   if (!slot) return null;
   const ageMs = Date.now() - slot.at;
   if (ageMs > maxAgeMs) return null;
   return {
-    bundle: slot.bundle,
-    meta: {
-      ...slot.meta,
-      fetchedAt: new Date(slot.at).toISOString(),
-      ageMs,
-      fromCache: true,
-    },
+    bundle: withSol(slot.bundle),
+    meta: { ...slot.meta, fetchedAt: new Date(slot.at).toISOString(), ageMs, fromCache: true },
   };
 }
 
@@ -53,7 +54,7 @@ export function lastSnapshot(): { bundle: RadarBundle; meta: RadarMeta } | null 
   const slot = bucket().slot;
   if (!slot) return null;
   return {
-    bundle: slot.bundle,
+    bundle: withSol(slot.bundle),
     meta: {
       ...slot.meta,
       fetchedAt: new Date(slot.at).toISOString(),
@@ -65,11 +66,7 @@ export function lastSnapshot(): { bundle: RadarBundle; meta: RadarMeta } | null 
 }
 
 export function writeSnapshot(bundle: RadarBundle, meta: Omit<RadarMeta, "fromCache" | "ageMs" | "fetchedAt">) {
-  bucket().slot = {
-    at: Date.now(),
-    bundle,
-    meta: { ...meta, fetchedAt: new Date().toISOString() },
-  };
+  bucket().slot = { at: Date.now(), bundle: withSol(bundle), meta: { ...meta, fetchedAt: new Date().toISOString() } };
 }
 
 export function clearSnapshot() {
