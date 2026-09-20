@@ -1,3 +1,4 @@
+import { isScamGem, scamReasons } from "./scam";
 import type { Gem, GemBuyer } from "./types";
 
 const HOUR = 60 * 60 * 1000;
@@ -23,7 +24,29 @@ export function scoreGem(input: {
   isStock?: boolean;
   wash?: number;
   dexOnly?: boolean;
+  token?: string;
+  symbol?: string;
+  name?: string;
+  pairUrl?: string | null;
+  kolCount?: number;
 }): { score: number; reasons: string[] } {
+  const flags = scamReasons({
+    token: input.token || "",
+    symbol: input.symbol || "",
+    name: input.name || "",
+    pairUrl: input.pairUrl || null,
+    mcap: input.mcap,
+    liquidity: input.liquidity,
+    change24: input.change24,
+    boughtUsd: input.boughtUsd,
+    soldUsd: input.soldUsd,
+    buyers: input.buyers,
+    kolCount: input.kolCount ?? (input.smartBuyers || []).filter((b) => b.kind === "kol").length,
+  });
+  if (flags.length) {
+    return { score: 0, reasons: flags.slice(0, 4) };
+  }
+
   const reasons: string[] = [];
   let score = 8;
   const smart = input.smartBuyers || [];
@@ -52,12 +75,10 @@ export function scoreGem(input: {
     reasons.push(`rank #${best} aldı`);
   } else if (best != null && best <= 25) {
     score += 6;
-    reasons.push(`top 25 aldı`);
+    reasons.push("top 25 aldı");
   }
 
-  if (watched[0]) {
-    reasons.push(watched.slice(0, 3).map((b) => `@${b.handle}`).join(" "));
-  }
+  if (watched[0]) reasons.push(watched.slice(0, 3).map((b) => `@${b.handle}`).join(" "));
 
   const lastSmart = input.lastSmartTs
     ? input.lastSmartTs < 10_000_000_000
@@ -146,6 +167,8 @@ export function rankGems(gems: Gem[]): Gem[] {
 }
 
 export function featuredGems(gems: Gem[], n = 6): Gem[] {
-  const watched = gems.filter((g) => !g.isStock && g.kolCount + g.smartCount >= 1 && g.lastSmartTs != null);
+  const watched = gems.filter(
+    (g) => !g.isStock && !isScamGem(g) && g.score > 0 && g.kolCount + g.smartCount >= 1 && g.lastSmartTs != null,
+  );
   return rankGems(watched).slice(0, n);
 }
