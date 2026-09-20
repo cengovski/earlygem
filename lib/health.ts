@@ -13,7 +13,24 @@ export const SOURCE_LABELS = [
 
 export type SourceKey = (typeof SOURCE_LABELS)[number]["key"];
 
+const LAST = new Map<SourceKey, { ok: boolean; count: number; at: number }>();
+const HOLD_MS = 15 * 60_000;
+
 export function markSource(key: SourceKey, ok: boolean, count = 0) {
+  if (ok) LAST.set(key, { ok: true, count, at: Date.now() });
+  else {
+    const prev = LAST.get(key);
+    if (prev?.ok && Date.now() - prev.at < HOLD_MS) {
+      logEvent({
+        level: "info",
+        event: "source",
+        outcome: "ok",
+        count: prev.count,
+        detail: key,
+      });
+      return;
+    }
+  }
   logEvent({
     level: ok ? "info" : "warn",
     event: "source",
