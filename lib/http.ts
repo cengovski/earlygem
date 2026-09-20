@@ -11,6 +11,15 @@ function originOf(url: string): string {
   }
 }
 
+function extraHeaders(url: string): Record<string, string> {
+  if (typeof window !== "undefined") return {};
+  return {
+    "User-Agent": BROWSER_UA,
+    Referer: `${originOf(url)}/`,
+    Origin: originOf(url),
+  };
+}
+
 export async function getJson<T>(url: string, init?: RequestInit & { retries?: number }): Promise<T | null> {
   const retries = init?.retries ?? 1;
   let lastDetail = "";
@@ -22,9 +31,7 @@ export async function getJson<T>(url: string, init?: RequestInit & { retries?: n
         cache: "no-store",
         headers: {
           Accept: "application/json,text/plain,*/*",
-          "User-Agent": BROWSER_UA,
-          Referer: `${originOf(url)}/`,
-          Origin: originOf(url),
+          ...extraHeaders(url),
           ...(init?.headers || {}),
         },
         signal: init?.signal ?? AbortSignal.timeout(14_000),

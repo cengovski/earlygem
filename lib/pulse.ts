@@ -1,14 +1,18 @@
 import { logEvent } from "./log";
 
-export const PULSE_ORIGINS = [
-  (process.env.PULSE_ORIGIN || "https://damp-butterfly-34a4.cengovski.workers.dev").replace(/\/$/, ""),
-  "https://fomopulse.app",
-].filter((origin, i, all) => origin && all.indexOf(origin) === i);
+const FALLBACK_WORKER = "https://damp-butterfly-34a4.cengovski.workers.dev";
+
+function publicOrigin() {
+  const env =
+    (typeof process !== "undefined" &&
+      (process.env.NEXT_PUBLIC_PULSE_ORIGIN || process.env.PULSE_ORIGIN)) ||
+    "";
+  return (env || FALLBACK_WORKER).replace(/\/$/, "");
+}
+
+export const PULSE_ORIGINS = [publicOrigin()].filter(Boolean);
 
 export const PULSE = PULSE_ORIGINS[0];
-
-const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
 async function readBodySnippet(res: Response): Promise<string> {
   try {
@@ -27,8 +31,6 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T | n
       cache: "no-store",
       headers: {
         Accept: "application/json",
-        "User-Agent": BROWSER_UA,
-        Referer: "https://fomopulse.app/",
         ...(init?.headers || {}),
       },
       signal: init?.signal ?? AbortSignal.timeout(12_000),
@@ -65,9 +67,5 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T | n
 
 export async function getPulse<T>(pathAndQuery: string): Promise<T | null> {
   const path = pathAndQuery.startsWith("/") ? pathAndQuery : `/${pathAndQuery}`;
-  for (const origin of PULSE_ORIGINS) {
-    const data = await getJson<T>(`${origin}${path}`);
-    if (data) return data;
-  }
-  return null;
+  return getJson<T>(`${PULSE}${path}`);
 }

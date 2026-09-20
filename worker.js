@@ -1,5 +1,5 @@
 const UPSTREAM = "https://fomopulse.app";
-const ALLOWED = new Set(["/api/status", "/api/tape", "/api/traders", "/api/discover"]);
+const ALLOWED = new Set(["/", "/health", "/api/status", "/api/tape", "/api/traders", "/api/discover"]);
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
@@ -19,6 +19,13 @@ export default {
     }
 
     const url = new URL(request.url);
+    if (url.pathname === "/" || url.pathname === "/health") {
+      return Response.json(
+        { ok: true, relay: "fomopulse", endpoints: ["/api/status", "/api/tape", "/api/traders", "/api/discover"] },
+        { headers: cors() },
+      );
+    }
+
     if (!ALLOWED.has(url.pathname)) {
       return Response.json({ error: "not_found", path: url.pathname }, { status: 404, headers: cors() });
     }
