@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { recentLogs, type LogEvent } from "@/lib/log";
 import { fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
+import { fireTapeAlerts } from "@/lib/watch";
 
 const POLL_MS = 45_000;
 
@@ -40,6 +41,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
       .then((next) => {
         if (!alive) return;
         setBundle(next);
+        fireTapeAlerts(next.tape.slice(0, 200)).catch(() => null);
       })
       .catch(() => undefined)
       .finally(() => {

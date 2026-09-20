@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RefreshButton } from "./RefreshButton";
+import { SourceDots } from "./SourceDots";
 
 const LINKS = [
   { href: "/", label: "Radar" },
@@ -7,6 +8,7 @@ const LINKS = [
   { href: "/gems", label: "Gemler" },
   { href: "/traders", label: "Traderlar" },
   { href: "/whales", label: "Whales" },
+  { href: "/alerts", label: "Alert" },
   { href: "/find", label: "Cüzdan bul" },
   { href: "/logs", label: "Log" },
 ];
@@ -40,6 +42,9 @@ export function Shell({
             <span className="font-mono text-[11px] uppercase tracking-wider text-mute">RH · SOL · BASE · BSC · ETH · MON</span>
           </div>
         </div>
+        <div className="mx-auto max-w-7xl px-4 pb-2">
+          <SourceDots />
+        </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -51,7 +56,7 @@ export function Shell({
         {children}
       </main>
       <footer className="mx-auto max-w-7xl px-4 pb-10 text-xs text-mute">
-        Bağımsız araç. FOMO + GMGN KOL/smart + Pump.fun roster + Axiom etiketli cüzdanlar.
+        Yeşil nokta = kaynak geldi. Kırmızı = denendi gelmedi. Gri = bu turda yok.
       </footer>
     </div>
   );
