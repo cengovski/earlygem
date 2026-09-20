@@ -2,6 +2,7 @@ import { logEvent } from "./log";
 
 const WORKER = "https://damp-butterfly-34a4.cengovski.workers.dev";
 const DIRECT = "https://fomopulse.app";
+const VPS = "http://107.175.85.233:8787";
 
 function extraOrigin() {
   const env =
@@ -11,7 +12,15 @@ function extraOrigin() {
   return env.replace(/\/$/, "");
 }
 
-export const PULSE_ORIGINS = [...new Set([extraOrigin(), DIRECT, WORKER].filter(Boolean))];
+function origins() {
+  const extra = extraOrigin();
+  if (typeof window !== "undefined") {
+    return [...new Set(["/api/upstream", extra, DIRECT, WORKER].filter(Boolean))];
+  }
+  return [...new Set([extra, VPS, DIRECT, WORKER].filter(Boolean))];
+}
+
+export const PULSE_ORIGINS = origins();
 export const PULSE = PULSE_ORIGINS[0];
 
 function isChallenge(text: string) {
@@ -39,15 +48,7 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T | n
     const ms = Date.now() - started;
     const snippet = await readBodySnippet(res);
     if (!res.ok || isChallenge(snippet)) {
-      logEvent({
-        level: "warn",
-        event: "fetch",
-        outcome: isChallenge(snippet) ? "denied" : "denied",
-        status: res.status,
-        url,
-        ms,
-        detail: snippet,
-      });
+      logEvent({ level: "warn", event: "fetch", outcome: "denied", status: res.status, url, ms, detail: snippet });
       return null;
     }
     const data = (await res.json()) as T;
@@ -69,8 +70,10 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T | n
 
 export async function getPulse<T>(pathAndQuery: string): Promise<T | null> {
   const path = pathAndQuery.startsWith("/") ? pathAndQuery : `/${pathAndQuery}`;
-  for (const origin of PULSE_ORIGINS) {
-    const data = await getJson<T>(`${origin}${path}`);
+  const list = origins();
+  for (const origin of list) {
+    const url = origin.startsWith("/") ? `${origin}${path.replace(/^\/api/, "")}` : `${origin}${path}`;
+    const data = await getJson<T>(url);
     if (data) return data;
   }
   return null;

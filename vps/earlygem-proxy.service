@@ -1,0 +1,15 @@
+[Unit]
+Description=earlygem pulse/GMGN proxy
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/earlygem-proxy
+EnvironmentFile=-/opt/earlygem-proxy/.env
+ExecStart=/usr/bin/node /opt/earlygem-proxy/proxy.mjs
+Restart=always
+RestartSec=3
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target
