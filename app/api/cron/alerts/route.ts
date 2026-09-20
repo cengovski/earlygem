@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { alertKeyboard, clusterHits, formatAlertHtml } from "@/lib/alert-msg";
 import { requireSecret } from "@/lib/auth";
+import { hydrateHit } from "@/lib/dexmeta";
 import { fetchRadarBundle } from "@/lib/radar";
 import { loadSettings } from "@/lib/settings";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
@@ -19,7 +20,8 @@ export async function GET(req: Request) {
   const bundle = await fetchRadarBundle({ force: true });
   const hits = clusterHits(bundle.tape, rule.windowMin, rule.minUsd, rule.minBuys);
   let sent = 0;
-  for (const hit of hits) {
+  for (const raw of hits) {
+    const hit = await hydrateHit(raw);
     const out = await sendTelegram(formatAlertHtml(hit), `${hit.chain}:${hit.token.toLowerCase()}`, {
       html: true,
       keyboard: alertKeyboard(hit.chain, hit.token),
