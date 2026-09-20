@@ -183,7 +183,8 @@ function gemFromDiscover(d: PulseDiscover, traders: Map<string, Trader>): Gem {
 export async function fetchPulseGems(traders?: Map<string, Trader>): Promise<Gem[]> {
   const raw = await getJson<PulseDiscover[]>(`${PULSE}/api/discover?limit=80`);
   if (!raw) return [];
-  return raw.map((d) => gemFromDiscover(d, traders ?? traderIndex(await fetchPulseTraders())));
+  const index = traders ?? traderIndex(await fetchPulseTraders());
+  return raw.map((d) => gemFromDiscover(d, index));
 }
 
 type DexPair = {
