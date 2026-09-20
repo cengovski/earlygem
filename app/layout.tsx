@@ -15,6 +15,7 @@ const geistMono = Geist_Mono({
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const preferredRegion = "fra1";
 
 export const metadata: Metadata = {
   title: "earlygem — FOMO erken gem radar",

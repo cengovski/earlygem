@@ -26,6 +26,13 @@ function chainFromBn(id: string | undefined): ChainId | null {
   return null;
 }
 
+function toB64(buf: ArrayBuffer) {
+  let out = "";
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+  return btoa(out);
+}
+
 async function signedGet(path: string, query: Record<string, string>) {
   if (!binanceConfigured()) return null;
   const qs = new URLSearchParams(query).toString();
@@ -41,12 +48,11 @@ async function signedGet(path: string, query: Record<string, string>) {
     ["sign"],
   );
   const sigBuf = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(pre));
-  const sign = Buffer.from(sigBuf).toString("base64");
   const res = await fetch(`${HOST}${requestPath}`, {
     headers: {
       "X-OC-APIKEY": key(),
       "X-OC-TIMESTAMP": ts,
-      "X-OC-SIGN": sign,
+      "X-OC-SIGN": toB64(sigBuf),
       "X-OC-RECV-WINDOW": "60000",
       Accept: "application/json",
     },
@@ -163,7 +169,7 @@ function traderFromWallet(row: BnWallet, kind: "smart" | "kol"): Trader | null {
   };
 }
 
-export async function fetchBinanceFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
+export async function loadBinanceFeedsDirect(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
   if (!binanceConfigured()) return { fills: [], traders: [] };
   const fills: TapeFill[] = [];
   const traders: Trader[] = [];
@@ -196,17 +202,32 @@ export async function fetchBinanceFeeds(): Promise<{ fills: TapeFill[]; traders:
       const fill = toFill(row, "kol");
       if (fill) fills.push(fill);
     }
-    const boards = [
-      ...((((smartBoard?.data as { list?: BnWallet[] } | undefined)?.list) || []) as BnWallet[]),
-      ...((((kolBoard?.data as { list?: BnWallet[] } | undefined)?.list) || []) as BnWallet[]),
-    ];
-    const kindFor = (i: number) => (i < 20 ? "smart" : "kol");
-    boards.forEach((row, i) => {
-      const t = traderFromWallet(row, kindFor(i) as "smart" | "kol");
+    const smartWallets = (((smartBoard?.data as { list?: BnWallet[] } | undefined)?.list) || []) as BnWallet[];
+    const kolWallets = (((kolBoard?.data as { list?: BnWallet[] } | undefined)?.list) || []) as BnWallet[];
+    for (const row of smartWallets) {
+      const t = traderFromWallet(row, "smart");
       if (t) traders.push(t);
-    });
+    }
+    for (const row of kolWallets) {
+      const t = traderFromWallet(row, "kol");
+      if (t) traders.push(t);
+    }
   } catch {
     return { fills, traders };
   }
   return { fills: fills.sort((a, b) => b.ts - a.ts), traders };
+}
+
+export async function fetchBinanceFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/binance", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) return { fills: [], traders: [] };
+      const json = (await res.json()) as { fills?: TapeFill[]; traders?: Trader[] };
+      return { fills: json.fills || [], traders: json.traders || [] };
+    } catch {
+      return { fills: [], traders: [] };
+    }
+  }
+  return loadBinanceFeedsDirect();
 }
