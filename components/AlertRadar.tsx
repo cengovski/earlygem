@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { isWrappedBase } from "@/lib/alert-msg";
 import { usd } from "@/lib/format";
+import { clearHourBookLocal, loadHourBook, noteLocalHit } from "@/lib/hour-client";
 import type { TapeFill } from "@/lib/types";
 import type { AlertRule } from "@/lib/watch";
 
@@ -66,6 +67,17 @@ function near(tape: TapeFill[], rule: AlertRule): Row[] {
     .slice(0, 12);
 }
 
+async function flushHour() {
+  const book = loadHourBook();
+  if (!Object.keys(book.rows).length && Date.now() - book.from < 50 * 60_000) return;
+  const res = await fetch("/api/hour-flush", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(book),
+  });
+  if (res.ok) clearHourBookLocal();
+}
+
 export function AlertRadar({ tape }: { tape: TapeFill[] }) {
   const [rule, setRule] = useState<AlertRule>({ windowMin: 10, minUsd: 1000, minBuys: 5 });
   const [status, setStatus] = useState<Record<string, string>>({});
@@ -77,6 +89,13 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
         if (row?.windowMin) setRule(row);
       })
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void flushHour();
+    }, 60 * 60_000);
+    return () => window.clearInterval(id);
   }, []);
 
   const rows = useMemo(() => near(tape, rule), [tape, rule]);
@@ -124,6 +143,7 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
           for (const row of fresh) {
             map[row.key] = now;
             next[row.key] = !res.ok ? json.error || `tg ${res.status}` : (json.sent || 0) > 0 ? "tg ✓" : "tg kilit";
+            if (res.ok && (json.sent || 0) > 0) noteLocalHit(row);
           }
           return next;
         });
