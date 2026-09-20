@@ -1,14 +1,23 @@
+import { KNOWN_WALLETS } from "./known";
 import { featuredGems, rankGems } from "./score";
 import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
 import { fetchPulseGems, fetchPulseStatus, fetchPulseTape, fetchPulseTraders } from "./sources";
 import { fetchSolWatch } from "./dexwatch";
 import { logEvent } from "./log";
+import { attachSolana } from "./solmap";
+import { fetchSolTape, gemsFromSolTape } from "./soltape";
 import { clearSnapshot, lastSnapshot, readSnapshot, writeSnapshot, type RadarBundle, type RadarMeta } from "./store";
 import { gemsFromSwaps, isSwapFill } from "./trades";
 import type { TapeFill, Trader } from "./types";
 
 const FRESH_MS = 25_000;
 const STALE_MS = 8 * 60_000;
+
+const KNOWN_SOL = Object.fromEntries(
+  Object.entries(KNOWN_WALLETS)
+    .filter(([, row]) => row.solana)
+    .map(([handle, row]) => [handle, row.solana as string]),
+);
 
 function tradersFromTape(tape: TapeFill[]): Trader[] {
   const byHandle = new Map<string, TapeFill[]>();
@@ -37,7 +46,7 @@ function tradersFromTape(tape: TapeFill[]): Trader[] {
     out.push({
       handle: head.handle || "",
       address: head.wallet,
-      solana: null,
+      solana: KNOWN_SOL[head.handle?.toLowerCase() || ""] || null,
       displayName: head.handle || "",
       avatarUrl: null,
       followers: head.followers || 0,
@@ -92,10 +101,10 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     }),
   ]);
 
-  let traders = tradersRaw;
+  let traders = attachSolana(tradersRaw, KNOWN_SOL);
   let tradersSource: RadarMeta["tradersSource"] = traders.length ? "pulse" : "none";
   if (!traders.length && tapeRaw.length) {
-    traders = tradersFromTape(tapeRaw);
+    traders = attachSolana(tradersFromTape(tapeRaw), KNOWN_SOL);
     tradersSource = traders.length ? "tape" : "none";
     logEvent({
       level: "warn",
@@ -129,10 +138,16 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
           }).kind
         : null),
   }));
+
+  const solTape = await fetchSolTape(traders.filter((t) => isWatchedKind(t.kind) && t.solana)).catch(() => [] as TapeFill[]);
+  const solGems = gemsFromSolTape(solTape);
+  if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length });
+  else if (traders.some((t) => t.solana)) logEvent({ level: "warn", event: "sol_tape", outcome: "empty", detail: "rpc_no_swaps" });
+
   const gems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
   const featured = featuredGems(gems, 6);
-  const smartTape = tape.filter((r) => isWatchedKind(r.smartKind)).slice(0, 40);
-  const bundle: RadarBundle = { traders, tape, gems, featured, smartTape, dexWatch, status };
+  const smartTape = [...solTape.filter((r) => isWatchedKind(r.smartKind)), ...tape.filter((r) => isWatchedKind(r.smartKind))].slice(0, 40);
+  const bundle: RadarBundle = { traders, tape: [...solTape, ...tape], gems, featured, smartTape, dexWatch, status, solTape, solGems };
   const meta: RadarMeta = {
     fetchedAt: new Date().toISOString(),
     ageMs: 0,
@@ -142,7 +157,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     tradersSource,
     errors,
   };
-  const usable = tape.length || traders.length || gems.length || dexWatch.length;
+  const usable = tape.length || traders.length || gems.length || dexWatch.length || solTape.length;
   if (!usable) {
     const stale = lastSnapshot();
     if (stale && stale.meta.ageMs < STALE_MS) {
