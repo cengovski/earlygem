@@ -14,12 +14,69 @@ export type AlertHit = {
   handles?: string[];
 };
 
+const WRAPPED_ADDR = new Set(
+  [
+    "so11111111111111111111111111111111111111112",
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "0x4200000000000000000000000000000000000006",
+    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+    "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+    "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c",
+    "0x2170ed0880ac9a755fd29b2688956bd959f933f8",
+    "0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f",
+    "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
+    "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "0x0000000000000000000000000000000000000000",
+    "7vfaxb2d5fxanxiy7iqk2p2oq5jkp1x",
+    "9n4nbm81irjyq73aswtchha7xm6p5x8bz4y6awm9fhwt",
+    "3nz9jfvxfp2dluohzcrftnuwwjjt5c2wkh96s4trd092",
+  ].map((s) => s.toLowerCase()),
+);
+
+const WRAPPED_SYM = new Set(
+  [
+    "WSOL",
+    "WETH",
+    "WBNB",
+    "WBTC",
+    "WBTCb",
+    "BTCB",
+    "WETH.e",
+    "WBTC.e",
+    "cbETH",
+    "wstETH",
+    "weETH",
+    "rETH",
+    "WMON",
+    "WAVAX",
+    "WMATIC",
+    "WFTM",
+    "WSUI",
+    "WBERA",
+    "SOL",
+    "ETH",
+    "BNB",
+    "BTC",
+  ].map((s) => s.toUpperCase()),
+);
+
+export function isWrappedBase(token: string, symbol?: string, name?: string) {
+  const addr = token.trim().toLowerCase();
+  if (WRAPPED_ADDR.has(addr)) return true;
+  const sym = (symbol || "").replace(/^\$/, "").trim().toUpperCase();
+  if (sym && WRAPPED_SYM.has(sym)) return true;
+  const label = `${sym} ${name || ""}`.toUpperCase();
+  if (/\bWRAPPED\s+(SOL|ETH|BNB|BTC|BITCOIN|ETHER|MONAD)\b/.test(label)) return true;
+  if (/^W(SOL|ETH|BNB|BTC|MON|AVAX|MATIC|FTM|SUI|BERA)$/.test(sym)) return true;
+  return false;
+}
+
 function esc(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function money(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n) || n <= 0) return "—";
+  if (n == null || !Number.isFinite(n) || n <= 0) return "\u2014";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
   return `$${Math.round(n)}`;
@@ -38,12 +95,8 @@ function basedChain(chain: ChainId) {
   return chain;
 }
 
-function dexChain(chain: ChainId) {
-  return chain;
-}
-
 export function tokenLinks(chain: ChainId, token: string) {
-  const dex = `https://dexscreener.com/${dexChain(chain)}/${token}`;
+  const dex = `https://dexscreener.com/${chain}/${token}`;
   const gmgn = `https://gmgn.ai/${gmgnChain(chain)}/token/${token}`;
   const based = `https://basedbot.app/token/${basedChain(chain)}/${token}`;
   const banana = `https://t.me/BananaGunSniper_bot?start=snp_${chain.toUpperCase()}_${token}`;
@@ -60,24 +113,24 @@ export function formatAlertHtml(hit: AlertHit) {
   const pct =
     hit.change24 != null && Number.isFinite(hit.change24)
       ? `${hit.change24 >= 0 ? "+" : ""}${hit.change24.toFixed(1)}%`
-      : "—";
+      : "\u2014";
   const handles = (hit.handles || []).slice(0, 4).map((h) => (h.startsWith("@") ? h : `@${h}`));
   const lines = [
-    `<b>🟢 BUY CLUSTER · ${esc(hit.chain.toUpperCase())}</b>`,
+    `<b>\ud83d\udfe2 BUY CLUSTER \u00b7 ${esc(hit.chain.toUpperCase())}</b>`,
     `<b>$${esc(hit.symbol)}</b>${hit.name && hit.name !== hit.symbol ? `  <i>${esc(hit.name)}</i>` : ""}`,
     "",
     `<code>${esc(hit.token)}</code>`,
     "",
     `MC ${money(hit.mcap)}   LP ${money(hit.liquidity)}   24h ${esc(pct)}`,
-    `${win}dk · <b>${hit.buys}</b> alım · <b>${money(hit.usd)}</b>`,
+    `${win}dk \u00b7 <b>${hit.buys}</b> al\u0131m \u00b7 <b>${money(hit.usd)}</b>`,
   ];
   if (handles.length) lines.push(`KOL ${esc(handles.join("  "))}`);
   lines.push(
     "",
-    `<a href="${links.dex}">DexScreener</a> · <a href="${links.gmgn}">GMGN</a> · <a href="${links.based}">BasedBot</a>`,
-    `<a href="${links.banana}">BananaGun</a> · <a href="${links.maestro}">Maestro</a> · <a href="${links.rick}">Rick</a>`,
+    `<a href="${links.dex}">DexScreener</a> \u00b7 <a href="${links.gmgn}">GMGN</a> \u00b7 <a href="${links.based}">BasedBot</a>`,
+    `<a href="${links.banana}">BananaGun</a> \u00b7 <a href="${links.maestro}">Maestro</a> \u00b7 <a href="${links.rick}">Rick</a>`,
   );
-  if (links.photon) lines.push(`<a href="${links.photon}">Photon</a> · <a href="${links.axiom || links.dex}">Axiom</a>`);
+  if (links.photon) lines.push(`<a href="${links.photon}">Photon</a> \u00b7 <a href="${links.axiom || links.dex}">Axiom</a>`);
   return lines.join("\n");
 }
 
@@ -104,6 +157,7 @@ export function clusterHits(tape: TapeFill[], windowMin: number, minUsd: number,
   const bag = new Map<string, AlertHit & { seen: Set<string> }>();
   for (const row of tape) {
     if (row.side !== "buy" || row.ts < since) continue;
+    if (isWrappedBase(row.token, row.symbol, row.name)) continue;
     const key = `${row.chain}:${row.token.toLowerCase()}`;
     const prev =
       bag.get(key) ||
