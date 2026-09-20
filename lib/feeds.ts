@@ -1,4 +1,5 @@
 import { fetchBinanceFeeds } from "./binance";
+import { fetchFomoAlerts } from "./fomoapi";
 import { gmgnApiKey, gmgnSlug } from "./gmgn";
 import { classifyTrader } from "./smart";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
@@ -12,11 +13,9 @@ const MIN_USD = 8;
 let lastAt = 0;
 let pumpCache: { at: number; rows: Trader[] } | null = null;
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, r));
-}
-
 async function gmgn(path: string, query: Record<string, string>) {
+  const key = gmgnApiKey();
+  if (!key) return null;
   const wait = GAP - (Date.now() - lastAt);
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastAt = Date.now();
@@ -26,10 +25,14 @@ async function gmgn(path: string, query: Record<string, string>) {
     client_id: crypto.randomUUID(),
   });
   const res = await fetch(`${HOST}${path}?${params}`, {
-    headers: { "X-APIKEY": gmgnApiKey(), Accept: "application/json" },
+    headers: { "X-APIKEY": key, Accept: "application/json" },
     cache: "no-store",
     signal: AbortSignal.timeout(8_000),
   });
+  if (res.status === 429) {
+    lastAt = Date.now() + 8_000;
+    return null;
+  }
   return (await res.json().catch(() => null)) as { data?: { list?: FeedRow[] } } | null;
 }
 
@@ -264,14 +267,15 @@ export function mergeTraders(base: Trader[], extra: Trader[]) {
 }
 
 export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
-  const [kolSol, smartSol, kolBsc, pump, bn] = await Promise.all([
+  const [kolSol, smartSol, kolBsc, pump, bn, fomo] = await Promise.all([
     pullFeed("kol", "solana", 40),
     pullFeed("smart", "solana", 40),
     pullFeed("kol", "bsc", 20),
     pullPumpRoster(),
     fetchBinanceFeeds(),
+    fetchFomoAlerts(),
   ]);
-  const fills = [...kolSol.fills, ...smartSol.fills, ...kolBsc.fills, ...bn.fills].sort((a, b) => b.ts - a.ts);
+  const fills = [...kolSol.fills, ...smartSol.fills, ...kolBsc.fills, ...bn.fills, ...fomo].sort((a, b) => b.ts - a.ts);
   const traders = mergeTraders([], [...kolSol.traders, ...smartSol.traders, ...kolBsc.traders, ...pump, ...bn.traders]);
   return { fills, traders };
 }
