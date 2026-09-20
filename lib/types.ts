@@ -1,5 +1,8 @@
 export type ChainId = "robinhood" | "solana" | "base" | "bsc" | "ethereum";
+
 export type TapeSide = "buy" | "sell";
+
+export type SmartKind = "kol" | "smart" | "active" | "noise";
 
 export type TapeFill = {
   id: string;
@@ -26,6 +29,17 @@ export type TapeFill = {
   firstBuy: boolean;
   flags: string[];
   source: "fomopulse" | "dexscreener";
+  smartKind: SmartKind | null;
+};
+
+export type GemBuyer = {
+  handle: string;
+  usd: number;
+  ts: number;
+  rank: number | null;
+  followers: number;
+  kind: SmartKind;
+  avatarUrl: string | null;
 };
 
 export type Gem = {
@@ -49,6 +63,12 @@ export type Gem = {
   score: number;
   reasons: string[];
   source: string;
+  smartBuyers: GemBuyer[];
+  kolCount: number;
+  smartCount: number;
+  lastSmartTs: number | null;
+  bestRank: number | null;
+  isStock: boolean;
 };
 
 export type Trader = {
@@ -69,6 +89,9 @@ export type Trader = {
   openTokens: number;
   rank: number | null;
   lastTs: number | null;
+  kind: SmartKind;
+  smartScore: number;
+  smartReasons: string[];
 };
 
 export type PulseStatus = {
