@@ -25,6 +25,33 @@ export default function AdminPage() {
       .catch(() => undefined);
   }, []);
 
+  async function postAlerts(test: boolean) {
+    setMsg(test ? "telegram test..." : "alarm taranıyor...");
+    const res = await fetch("/api/admin/alerts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ test }),
+    });
+    const json = (await res.json()) as {
+      ok?: boolean;
+      error?: string;
+      hits?: number;
+      sent?: number;
+      skipped?: number;
+      tape?: number;
+      rule?: AlertRule;
+    };
+    if (!json.ok) {
+      setMsg(json.error || "alarm hata");
+      return;
+    }
+    if (test) {
+      setMsg("telegram test gitti");
+      return;
+    }
+    setMsg(`tape ${json.tape} · küme ${json.hits} · giden ${json.sent} · atlanan ${json.skipped} · eşik ${json.rule?.windowMin}dk / $${json.rule?.minUsd} / ${json.rule?.minBuys}`);
+  }
+
   if (!authed) {
     return (
       <Shell title="Admin" subtitle="Şifre Vercel ADMIN_PASSWORD. Key'ler sadece bu tarayıcıda kalır.">
@@ -61,7 +88,7 @@ export default function AdminPage() {
   }
 
   return (
-    <Shell title="Admin" subtitle="Eşik cron için. Key'ler localStorage — istekler senin IP'nden gider.">
+    <Shell title="Admin" subtitle="Eşik cron + admin çalıştır. Key'ler localStorage.">
       <form
         className="mb-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
         onSubmit={async (e) => {
@@ -71,15 +98,20 @@ export default function AdminPage() {
             headers: { "content-type": "application/json" },
             body: JSON.stringify(rule),
           });
-          const json = (await res.json()) as { ok?: boolean; persisted?: string; error?: string };
-          setMsg(json.ok ? `eşik kaydedildi (${json.persisted || "ok"})` : json.error || "hata");
+          const json = (await res.json()) as { ok?: boolean; persisted?: string; error?: string; note?: string };
+          setMsg(json.ok ? `eşik kaydedildi (${json.persisted || "ok"}${json.note ? " / " + json.note : ""})` : json.error || "hata");
         }}
       >
         <p className="text-sm font-medium">Telegram eşiği</p>
+        <p className="text-xs text-mute">Varsayılan 10dk / $1000 / 5 alım. Tape'de görünen her token alarm değil — küme eşiği gerekir.</p>
         <label className="block text-sm">pencere (dk)<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.windowMin} onChange={(e) => setRule({ ...rule, windowMin: Number(e.target.value) })} /></label>
         <label className="block text-sm">min alım USD<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={100} value={rule.minUsd} onChange={(e) => setRule({ ...rule, minUsd: Number(e.target.value) })} /></label>
         <label className="block text-sm">min alım adedi<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.minBuys} onChange={(e) => setRule({ ...rule, minBuys: Number(e.target.value) })} /></label>
-        <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">eşiği kaydet</button>
+        <div className="flex flex-wrap gap-2">
+          <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">eşiği kaydet</button>
+          <button className="rounded-md border border-line px-3 py-1 text-sm" type="button" onClick={() => postAlerts(true)}>telegram test</button>
+          <button className="rounded-md border border-line px-3 py-1 text-sm" type="button" onClick={() => postAlerts(false)}>alarmları çalıştır</button>
+        </div>
       </form>
       <form
         className="max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
