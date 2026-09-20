@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ago, compact, usd } from "@/lib/format";
 import type { Gem } from "@/lib/types";
 import { ChainBadge, SmartBadge } from "./Badge";
+import { TokenLinks } from "./TokenLinks";
 
 export function GemCard({ gem }: { gem: Gem }) {
   const watched = gem.smartBuyers.filter((b) => b.kind === "kol" || b.kind === "smart").slice(0, 4);
@@ -9,9 +10,7 @@ export function GemCard({ gem }: { gem: Gem }) {
     <article className="flex flex-col rounded-xl border border-line bg-surface p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <Link href={`/token/${gem.chain}/${gem.token}`} className="text-lg font-semibold hover:text-accent">
-            {gem.symbol}
-          </Link>
+          <Link href={`/token/${gem.chain}/${gem.token}`} className="text-lg font-semibold hover:text-accent">{gem.symbol}</Link>
           <div className="text-xs text-mute">{gem.name}</div>
         </div>
         <div className="text-right">
@@ -29,11 +28,7 @@ export function GemCard({ gem }: { gem: Gem }) {
       {watched.length ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {watched.map((b) => (
-            <Link
-              key={b.handle}
-              href={`/find?q=${encodeURIComponent(b.handle)}`}
-              className="rounded-md border border-line px-1.5 py-0.5 text-[11px] text-mute hover:text-accent"
-            >
+            <Link key={b.handle} href={`/find?q=${encodeURIComponent(b.handle)}`} className="rounded-md border border-line px-1.5 py-0.5 text-[11px] text-mute hover:text-accent">
               @{b.handle}
               {b.rank ? <span className="ml-1 font-mono text-[10px]">#{b.rank}</span> : null}
             </Link>
@@ -47,16 +42,12 @@ export function GemCard({ gem }: { gem: Gem }) {
           <li key={r}>· {r}</li>
         ))}
       </ul>
-      <div className="mt-3 flex items-center justify-between text-[11px] text-mute">
-        <span>
-          {gem.kolCount + gem.smartCount} smart · {compact(gem.buyers)} alıcı
-          {gem.lastSmartTs ? ` · ${ago(gem.lastSmartTs)}` : gem.pairCreatedAt ? ` · ${ago(gem.pairCreatedAt)}` : ""}
-        </span>
-        {gem.pairUrl ? (
-          <a href={gem.pairUrl} target="_blank" rel="noreferrer" className="hover:text-accent">
-            Dex
-          </a>
-        ) : null}
+      <div className="mt-3 text-[11px] text-mute">
+        {gem.kolCount + gem.smartCount} smart · {compact(gem.buyers)} alıcı
+        {gem.lastSmartTs ? ` · ${ago(gem.lastSmartTs)}` : gem.pairCreatedAt ? ` · ${ago(gem.pairCreatedAt)}` : ""}
+      </div>
+      <div className="mt-3">
+        <TokenLinks chain={gem.chain} address={gem.token} pairUrl={gem.pairUrl} />
       </div>
     </article>
   );

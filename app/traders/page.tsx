@@ -2,17 +2,13 @@ import Link from "next/link";
 import { SmartBadge } from "@/components/Badge";
 import { Shell } from "@/components/Shell";
 import { compact, shortAddr, usd } from "@/lib/format";
-import { fetchPulseTraders } from "@/lib/sources";
+import { fetchRadarBundle } from "@/lib/sources";
 
-export const revalidate = 25;
+export const dynamic = "force-dynamic";
 
-export default async function TradersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ kind?: string }>;
-}) {
+export default async function TradersPage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
   const { kind } = await searchParams;
-  const traders = await fetchPulseTraders();
+  const { traders } = await fetchRadarBundle();
   const rows =
     kind === "kol"
       ? traders.filter((t) => t.kind === "kol")
@@ -21,10 +17,7 @@ export default async function TradersPage({
         : traders;
 
   return (
-    <Shell
-      title="Smart / KOL roster"
-      subtitle="Takipçi + tape rank + hacim + tur galibiyeti. Bu liste her yenilemede yeniden sınıflanır ve radarın kaynağıdır."
-    >
+    <Shell title="Smart / KOL roster" subtitle="Takipçi + tape rank + hacim + tur galibiyeti. Pulse boşsa tape'den türetilir.">
       <div className="mb-4 flex flex-wrap gap-2 text-sm">
         <Link href="/traders" className="rounded-md border border-line px-3 py-1 text-mute hover:text-ink">hepsi</Link>
         <Link href="/traders?kind=smart" className="rounded-md border border-line px-3 py-1 text-mute hover:text-ink">smart + KOL</Link>
@@ -47,6 +40,11 @@ export default async function TradersPage({
             </tr>
           </thead>
           <tbody>
+            {!rows.length ? (
+              <tr>
+                <td colSpan={10} className="px-3 py-8 text-sm text-mute">Roster boş. Üstten yenile veya Log.</td>
+              </tr>
+            ) : null}
             {rows.map((t, i) => (
               <tr key={t.handle} className="tape-row border-t border-line">
                 <td className="num px-3 py-2 text-mute">{t.rank ?? i + 1}</td>

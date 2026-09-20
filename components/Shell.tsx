@@ -1,14 +1,24 @@
 import Link from "next/link";
+import { RefreshButton } from "./RefreshButton";
 
 const LINKS = [
   { href: "/", label: "Radar" },
   { href: "/tape", label: "Tape" },
   { href: "/gems", label: "Gemler" },
   { href: "/traders", label: "Traderlar" },
-  { href: "/find", label: "Cuzdan bul" },
+  { href: "/find", label: "Cüzdan bul" },
+  { href: "/logs", label: "Log" },
 ];
 
-export function Shell({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle?: string }) {
+export function Shell({
+  children,
+  title,
+  subtitle,
+}: {
+  children: React.ReactNode;
+  title: string;
+  subtitle?: string;
+}) {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-line/80 bg-[#12110c]/90 backdrop-blur">
@@ -19,21 +29,29 @@ export function Shell({ children, title, subtitle }: { children: React.ReactNode
           </Link>
           <nav className="flex flex-1 flex-wrap gap-1 text-sm">
             {LINKS.map((l) => (
-              <Link key={l.href} href={l.href} className="rounded-md px-2.5 py-1 text-mute hover:bg-surface hover:text-ink">{l.label}</Link>
+              <Link key={l.href} href={l.href} className="rounded-md px-2.5 py-1 text-mute hover:bg-surface hover:text-ink">
+                {l.label}
+              </Link>
             ))}
           </nav>
-          <span className="font-mono text-[11px] uppercase tracking-wider text-mute">SOL + EVM · FOMO radar</span>
+          <div className="flex items-center gap-2">
+            <RefreshButton />
+            <span className="font-mono text-[11px] uppercase tracking-wider text-mute">SOL + EVM · FOMO radar</span>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
-          {subtitle ? <p className="mt-1 max-w-2xl text-sm text-mute">{subtitle}</p> : null}
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
+            {subtitle ? <p className="mt-1 max-w-2xl text-sm text-mute">{subtitle}</p> : null}
+          </div>
         </div>
         {children}
       </main>
       <footer className="mx-auto max-w-7xl px-4 pb-10 text-xs text-mute">
-        Bagimsiz arac. fomo.family / Robinhood ile bagli degil. Canli RH tape: fomopulse.app · SOL: DexScreener.
+        Bağımsız araç. fomo.family / Robinhood ile bağlı değil. Profil adresi ≠ trading cüzdanı.
+        Canlı RH tape: fomopulse.app · SOL keşif: DexScreener.
       </footer>
     </div>
   );
