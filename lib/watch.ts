@@ -9,13 +9,13 @@ export type AlertRule = {
 
 export function serverRule(): AlertRule {
   return {
-    windowMin: Number(process.env.ALERT_WINDOW_MIN) || 3,
-    minUsd: Number(process.env.ALERT_MIN_USD) || 2500,
-    minBuys: Number(process.env.ALERT_MIN_BUYS) || 3,
+    windowMin: Number(process.env.ALERT_WINDOW_MIN) || 10,
+    minUsd: Number(process.env.ALERT_MIN_USD) || 1000,
+    minBuys: Number(process.env.ALERT_MIN_BUYS) || 5,
   };
 }
 
-export const DEFAULT_RULE: AlertRule = { windowMin: 3, minUsd: 2500, minBuys: 3 };
+export const DEFAULT_RULE: AlertRule = { windowMin: 10, minUsd: 1000, minBuys: 5 };
 
 export function loadRule(): AlertRule {
   return serverRule();
