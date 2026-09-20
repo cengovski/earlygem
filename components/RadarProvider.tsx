@@ -5,6 +5,8 @@ import { recentLogs, type LogEvent } from "@/lib/log";
 import { fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
 
+const POLL_MS = 30_000;
+
 type RadarState = {
   bundle: (RadarBundle & { meta: RadarMeta }) | null;
   loading: boolean;
@@ -29,7 +31,8 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
+    const first = !bundle;
+    if (first) setLoading(true);
     fetchRadarBundle({ force: true })
       .then((next) => {
         if (!alive) return;
@@ -37,7 +40,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {
         if (!alive) return;
-        setBundle(null);
+        if (first) setBundle(null);
       })
       .finally(() => {
         if (!alive) return;
@@ -47,7 +50,13 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((n) => n + 1), POLL_MS);
+    return () => window.clearInterval(id);
+  }, []);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
 

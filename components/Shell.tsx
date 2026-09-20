@@ -36,7 +36,7 @@ export function Shell({
           </nav>
           <div className="flex items-center gap-2">
             <RefreshButton />
-            <span className="font-mono text-[11px] uppercase tracking-wider text-mute">SOL + EVM · FOMO radar</span>
+            <span className="font-mono text-[11px] uppercase tracking-wider text-mute">RH · SOL · BASE · BSC · ETH · MON</span>
           </div>
         </div>
       </header>
@@ -51,7 +51,7 @@ export function Shell({
       </main>
       <footer className="mx-auto max-w-7xl px-4 pb-10 text-xs text-mute">
         Bağımsız araç. fomo.family / Robinhood ile bağlı değil. Profil adresi ≠ trading cüzdanı.
-        Canlı RH tape: fomopulse.app · SOL keşif: DexScreener.
+        Smart küme: fomopulse RH tape. Diğer FOMO ağları (SOL/BASE/BSC/ETH/MON) DexScreener izleme — handle yok.
       </footer>
     </div>
   );
