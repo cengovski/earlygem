@@ -1,5 +1,6 @@
 import { KNOWN_WALLETS } from "./known";
 import { featuredGems, rankGems } from "./score";
+import { attachGmgnSecurity } from "./scan";
 import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
 import { fetchPulseGems, fetchPulseStatus, fetchPulseTape, fetchPulseTraders } from "./sources";
 import { fetchSolWatch } from "./dexwatch";
@@ -178,7 +179,8 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   const solGems = gemsFromSolTape(solTape);
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn" });
 
-  const gems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
+  const rawGems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
+  const gems = await withTimeout(attachGmgnSecurity(rawGems, 6), 8_000, rawGems);
   const featured = featuredGems(gems, 6);
   const merged = [...solTape, ...tape].sort((a, b) => b.ts - a.ts);
   const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 40);
@@ -197,7 +199,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     const stale = lastSnapshot();
     if (stale && stale.meta.ageMs < STALE_MS) {
       return { ...stale.bundle, meta: { ...stale.meta, errors: [...errors, "stale_snapshot"] } };
-    }
+  }
   }
   writeSnapshot(bundle, meta);
   return { ...bundle, meta };
