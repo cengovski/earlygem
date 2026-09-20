@@ -5,6 +5,7 @@ import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
 import { fetchPulseGems, fetchPulseStatus, fetchPulseTape, fetchPulseTraders } from "./sources";
 import { fetchSolWatch } from "./dexwatch";
 import { fetchGmgnWalletTape } from "./gmgn";
+import { fetchExternalFeeds, mergeTraders } from "./feeds";
 import { logEvent } from "./log";
 import { attachSolana } from "./solmap";
 import { gemsFromSolTape } from "./soltape";
@@ -175,9 +176,14 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   }));
 
   const watched = traders.filter((t) => isWatchedKind(t.kind) || t.solana);
-  const solTape = await withTimeout(loadGmgnTape(watched), 7_000, []);
+  const [solTapeRaw, feeds] = await Promise.all([
+    withTimeout(loadGmgnTape(watched), 7_000, [] as TapeFill[]),
+    withTimeout(fetchExternalFeeds(), 9_000, { fills: [] as TapeFill[], traders: [] as Trader[] }),
+  ]);
+  traders = mergeTraders(traders, feeds.traders);
+  const solTape = [...feeds.fills, ...solTapeRaw].sort((a, b) => b.ts - a.ts);
   const solGems = gemsFromSolTape(solTape);
-  if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn" });
+  if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 
   const rawGems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
   const gems = await withTimeout(attachGmgnSecurity(rawGems, 6), 8_000, rawGems);
@@ -199,7 +205,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     const stale = lastSnapshot();
     if (stale && stale.meta.ageMs < STALE_MS) {
       return { ...stale.bundle, meta: { ...stale.meta, errors: [...errors, "stale_snapshot"] } };
-  }
+    }
   }
   writeSnapshot(bundle, meta);
   return { ...bundle, meta };
