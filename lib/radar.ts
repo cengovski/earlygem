@@ -155,6 +155,21 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     fetchSolWatch().catch(() => []),
   ]);
 
+  logEvent({
+    level: status || tapeRaw.length ? "info" : "warn",
+    event: "source",
+    outcome: status || tapeRaw.length ? "ok" : "empty",
+    count: tapeRaw.length,
+    detail: "pulse",
+  });
+  logEvent({
+    level: dexWatch.length ? "info" : "warn",
+    event: "source",
+    outcome: dexWatch.length ? "ok" : "empty",
+    count: dexWatch.length,
+    detail: "dex",
+  });
+
   let traders = attachSolana(tradersRaw, KNOWN_SOL);
   let tradersSource: RadarMeta["tradersSource"] = traders.length ? "pulse" : "none";
   if (!traders.length && tapeRaw.length) {
@@ -185,10 +200,10 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   const solGems = gemsFromSolTape(solTape);
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 
-  const rawGems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
-  const gems = await withTimeout(attachGmgnSecurity(rawGems, 6), 8_000, rawGems);
+  const rawGems = rankGems([...gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape), ...solGems]);
+  const gems = await withTimeout(attachGmgnSecurity(rawGems, 16), 10_000, rawGems);
   const featured = featuredGems(gems, 6);
-  const merged = [...solTape, ...tape].sort((a, b) => b.ts - a.ts);
+  const merged = [...solTape, ...tape].sort((a, b) => b.ts - a.ts).slice(0, 400);
   const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 40);
   const bundle: RadarBundle = { traders, tape: merged, gems, featured, smartTape, dexWatch, status, solTape, solGems };
   const meta: RadarMeta = {
