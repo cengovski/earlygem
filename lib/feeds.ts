@@ -1,5 +1,5 @@
 import { fetchBinanceFeeds } from "./binance";
-import { gmgnApiKey, gmgnSlug, chainFromGmgn } from "./gmgn";
+import { gmgnApiKey, gmgnSlug } from "./gmgn";
 import { classifyTrader } from "./smart";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
@@ -160,7 +160,7 @@ async function pullFeed(kind: "kol" | "smart", chain: ChainId, limit: number) {
   const fills: TapeFill[] = [];
   const traders = new Map<string, Trader>();
   for (const row of rows) {
-    const fill = toFill(row, chainFromGmgn(row as never) || chain, kind);
+    const fill = toFill(row, chain, kind);
     if (!fill) continue;
     fills.push(fill);
     const key = (fill.wallet || fill.handle || "").toLowerCase();
@@ -259,15 +259,14 @@ export function mergeTraders(base: Trader[], extra: Trader[]) {
 }
 
 export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
-  const jobs = await Promise.all([
+  const [kolSol, smartSol, kolBsc, pump, bn] = await Promise.all([
     pullFeed("kol", "solana", 40),
     pullFeed("smart", "solana", 40),
     pullFeed("kol", "bsc", 20),
     pullPumpRoster(),
     fetchBinanceFeeds(),
   ]);
-  const bn = jobs[4];
-  const fills = [...jobs[0].fills, ...jobs[1].fills, ...jobs[2].fills, ...bn.fills].sort((a, b) => b.ts - a.ts);
-  const traders = mergeTraders([], [...jobs[0].traders, ...jobs[1].traders, ...jobs[2].traders, jobs[3], ...bn.traders]);
+  const fills = [...kolSol.fills, ...smartSol.fills, ...kolBsc.fills, ...bn.fills].sort((a, b) => b.ts - a.ts);
+  const traders = mergeTraders([], [...kolSol.traders, ...smartSol.traders, ...kolBsc.traders, ...pump, ...bn.traders]);
   return { fills, traders };
 }
