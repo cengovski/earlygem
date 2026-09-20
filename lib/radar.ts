@@ -122,11 +122,17 @@ async function withTimeout<T>(job: Promise<T>, ms: number, fallback: T): Promise
   ]);
 }
 
-async function loadGmgnTape(traders: Trader[]): Promise<TapeFill[]> {
+async function loadFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
   if (typeof window !== "undefined") {
-    return withTimeout(fetchGmgnWalletTape(traders), 6_000, []);
+    try {
+      const res = await fetch("/api/gmgn-feed", { cache: "no-store", signal: AbortSignal.timeout(12_000) });
+      if (!res.ok) return { fills: [], traders: [] };
+      return (await res.json()) as { fills: TapeFill[]; traders: Trader[] };
+    } catch {
+      return { fills: [], traders: [] };
+    }
   }
-  return withTimeout(fetchGmgnWalletTape(traders), 6_000, []);
+  return fetchExternalFeeds();
 }
 
 export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<RadarBundle & { meta: RadarMeta }> {
@@ -181,13 +187,9 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
       (row.handle ? index.get(row.handle.toLowerCase())?.kind || null : null),
   }));
 
-  const watched = traders.filter((t) => isWatchedKind(t.kind) || t.solana);
-  const [solTapeRaw, feeds] = await Promise.all([
-    withTimeout(loadGmgnTape(watched), 7_000, [] as TapeFill[]),
-    withTimeout(fetchExternalFeeds(), 9_000, { fills: [] as TapeFill[], traders: [] as Trader[] }),
-  ]);
+  const [feeds] = await Promise.all([withTimeout(loadFeeds(), 14_000, { fills: [] as TapeFill[], traders: [] as Trader[] })]);
   traders = mergeTraders(traders, feeds.traders);
-  const solTape = [...feeds.fills, ...solTapeRaw].filter(keepFill).sort((a, b) => b.ts - a.ts);
+  const solTape = feeds.fills.filter(keepFill).sort((a, b) => b.ts - a.ts);
   const solGems = gemsFromSolTape(solTape);
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 
@@ -195,7 +197,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   const gems = await withTimeout(attachGmgnSecurity(rawGems, 16), 10_000, rawGems);
   const featured = featuredGems(gems, 6);
   const merged = [...solTape, ...tape].sort((a, b) => b.ts - a.ts).slice(0, 400);
-  const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 40);
+  const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 80);
   const bundle: RadarBundle = { traders, tape: merged, gems, featured, smartTape, dexWatch, status, solTape, solGems };
   const meta: RadarMeta = {
     fetchedAt: new Date().toISOString(),
