@@ -6,7 +6,7 @@ import { fetchSolWatch } from "./dexwatch";
 import { fetchGmgnWalletTape } from "./gmgn";
 import { logEvent } from "./log";
 import { attachSolana } from "./solmap";
-import { fetchSolTape, gemsFromSolTape } from "./soltape";
+import { gemsFromSolTape } from "./soltape";
 import { clearSnapshot, lastSnapshot, readSnapshot, writeSnapshot, type RadarBundle, type RadarMeta } from "./store";
 import { gemsFromSwaps, isSwapFill } from "./trades";
 import type { TapeFill, Trader } from "./types";
@@ -19,6 +19,44 @@ const KNOWN_SOL = Object.fromEntries(
     .filter(([, row]) => row.solana)
     .map(([handle, row]) => [handle, row.solana as string]),
 );
+
+function seedKnownTraders(): Trader[] {
+  return Object.entries(KNOWN_WALLETS).map(([handle, row]) => {
+    const tagged = classifyTrader({
+      handle,
+      followers: handle === "unipcs" || handle === "frankdegods" ? 80_000 : 4_000,
+      rank: handle === "unipcs" ? 1 : 20,
+      volume: 50_000,
+      realized: 0,
+      unrealized: 0,
+      wins: 0,
+      trips: 0,
+      fills: 10,
+    });
+    return {
+      handle,
+      address: row.evm || "",
+      solana: row.solana || null,
+      displayName: handle,
+      avatarUrl: null,
+      followers: tagged.smartScore > 70 ? 80_000 : 4_000,
+      clan: null,
+      profileUrl: `https://fomo.family/profile/${handle}`,
+      fills: 10,
+      volume: 50_000,
+      realized: 0,
+      unrealized: 0,
+      wins: 0,
+      trips: 0,
+      openTokens: 0,
+      rank: handle === "unipcs" ? 1 : 20,
+      lastTs: Date.now(),
+      kind: tagged.kind,
+      smartScore: tagged.smartScore,
+      smartReasons: ["known_map", ...tagged.reasons],
+    };
+  });
+}
 
 function tradersFromTape(tape: TapeFill[]): Trader[] {
   const byHandle = new Map<string, TapeFill[]>();
@@ -70,6 +108,13 @@ function tradersFromTape(tape: TapeFill[]): Trader[] {
   return out.sort((a, b) => b.volume - a.volume);
 }
 
+async function withTimeout<T>(job: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    job.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 async function loadGmgnTape(traders: Trader[]): Promise<TapeFill[]> {
   if (typeof window !== "undefined") {
     try {
@@ -78,16 +123,17 @@ async function loadGmgnTape(traders: Trader[]): Promise<TapeFill[]> {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ traders }),
         cache: "no-store",
+        signal: AbortSignal.timeout(6_000),
       });
       if (res.ok) {
         const json = (await res.json()) as { rows?: TapeFill[] };
         return json.rows || [];
       }
     } catch {
-      /* fall through */
+      return [];
     }
   }
-  return fetchGmgnWalletTape(traders).catch(() => []);
+  return withTimeout(fetchGmgnWalletTape(traders), 6_000, []);
 }
 
 export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<RadarBundle & { meta: RadarMeta }> {
@@ -100,26 +146,11 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
 
   const errors: string[] = [];
   const [status, tradersRaw, discoverSeed, tapeRaw, dexWatch] = await Promise.all([
-    fetchPulseStatus().catch((e) => {
-      errors.push(`status:${e instanceof Error ? e.message : "fail"}`);
-      return null;
-    }),
-    fetchPulseTraders().catch((e) => {
-      errors.push(`traders:${e instanceof Error ? e.message : "fail"}`);
-      return [] as Trader[];
-    }),
-    fetchPulseGems().catch((e) => {
-      errors.push(`discover:${e instanceof Error ? e.message : "fail"}`);
-      return [];
-    }),
-    fetchPulseTape(280).catch((e) => {
-      errors.push(`tape:${e instanceof Error ? e.message : "fail"}`);
-      return [] as TapeFill[];
-    }),
-    fetchSolWatch().catch((e) => {
-      errors.push(`dex:${e instanceof Error ? e.message : "fail"}`);
-      return [];
-    }),
+    fetchPulseStatus().catch(() => null),
+    fetchPulseTraders().catch(() => [] as Trader[]),
+    fetchPulseGems().catch(() => []),
+    fetchPulseTape(280).catch(() => [] as TapeFill[]),
+    fetchSolWatch().catch(() => []),
   ]);
 
   let traders = attachSolana(tradersRaw, KNOWN_SOL);
@@ -128,30 +159,22 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     traders = attachSolana(tradersFromTape(tapeRaw), KNOWN_SOL);
     tradersSource = traders.length ? "tape" : "none";
   }
+  if (!traders.length) {
+    traders = seedKnownTraders();
+    tradersSource = "none";
+    errors.push("traders_seeded_known");
+  }
 
   const index = traderIndex(traders);
   const tape = tapeRaw.filter(isSwapFill).map((row) => ({
     ...row,
     smartKind:
       row.smartKind ||
-      (row.handle
-        ? index.get(row.handle.toLowerCase())?.kind ||
-          classifyTrader({
-            followers: row.followers || 0,
-            rank: row.rank,
-            volume: 0,
-            realized: 0,
-            unrealized: 0,
-            wins: 0,
-            trips: 0,
-            fills: 0,
-          }).kind
-        : null),
+      (row.handle ? index.get(row.handle.toLowerCase())?.kind || null : null),
   }));
 
-  const watched = traders.filter((t) => isWatchedKind(t.kind));
-  let solTape = await loadGmgnTape(watched);
-  if (!solTape.length) solTape = await fetchSolTape(watched.filter((t) => t.solana)).catch(() => [] as TapeFill[]);
+  const watched = traders.filter((t) => isWatchedKind(t.kind) || t.solana);
+  const solTape = await withTimeout(loadGmgnTape(watched), 7_000, []);
   const solGems = gemsFromSolTape(solTape);
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn" });
 
