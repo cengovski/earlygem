@@ -13,11 +13,15 @@ export function adminConfigured() {
   return Boolean(secret());
 }
 
+function toHex(buf: ArrayBuffer) {
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function hmac(text: string) {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey("raw", enc.encode(signKey()), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const buf = await crypto.subtle.sign("HMAC", key, enc.encode(text));
-  return Buffer.from(buf).toString("hex");
+  return toHex(buf);
 }
 
 function safeEq(a: string, b: string) {
