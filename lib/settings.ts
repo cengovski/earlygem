@@ -65,8 +65,9 @@ export async function saveSettings(rule: AlertRule) {
       body: JSON.stringify(next),
       signal: AbortSignal.timeout(5_000),
     });
-    return { ok: res.ok, persisted: res.ok ? "vps" : "memory", rule: next };
+    if (res.ok) return { ok: true, persisted: "vps", rule: next };
+    return { ok: true, persisted: "memory", rule: next, note: `vps_${res.status}` };
   } catch {
-    return { ok: true, persisted: "memory", rule: next };
+    return { ok: true, persisted: "memory", rule: next, note: "vps_offline" };
   }
 }
