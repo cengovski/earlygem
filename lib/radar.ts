@@ -70,6 +70,26 @@ function tradersFromTape(tape: TapeFill[]): Trader[] {
   return out.sort((a, b) => b.volume - a.volume);
 }
 
+async function loadGmgnTape(traders: Trader[]): Promise<TapeFill[]> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/gmgn-activity", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ traders }),
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { rows?: TapeFill[] };
+        return json.rows || [];
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return fetchGmgnWalletTape(traders).catch(() => []);
+}
+
 export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<RadarBundle & { meta: RadarMeta }> {
   if (!opts?.force) {
     const fresh = readSnapshot(FRESH_MS);
@@ -107,18 +127,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   if (!traders.length && tapeRaw.length) {
     traders = attachSolana(tradersFromTape(tapeRaw), KNOWN_SOL);
     tradersSource = traders.length ? "tape" : "none";
-    logEvent({
-      level: "warn",
-      event: "traders_fallback",
-      outcome: traders.length ? "ok" : "empty",
-      count: traders.length,
-      detail: "derived_from_tape",
-    });
   }
-  if (!status) errors.push("pulse_status_null");
-  if (!tradersRaw.length) errors.push("pulse_traders_empty");
-  if (!tapeRaw.length) errors.push("pulse_tape_empty");
-  if (!discoverSeed.length) errors.push("pulse_discover_empty");
 
   const index = traderIndex(traders);
   const tape = tapeRaw.filter(isSwapFill).map((row) => ({
@@ -140,12 +149,11 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
         : null),
   }));
 
-  const watchedSol = traders.filter((t) => isWatchedKind(t.kind) && t.solana);
-  let solTape = await fetchGmgnWalletTape(watchedSol).catch(() => [] as TapeFill[]);
-  if (!solTape.length) solTape = await fetchSolTape(watchedSol).catch(() => [] as TapeFill[]);
+  const watched = traders.filter((t) => isWatchedKind(t.kind));
+  let solTape = await loadGmgnTape(watched);
+  if (!solTape.length) solTape = await fetchSolTape(watched.filter((t) => t.solana)).catch(() => [] as TapeFill[]);
   const solGems = gemsFromSolTape(solTape);
-  if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn_or_rpc" });
-  else if (traders.some((t) => t.solana)) logEvent({ level: "warn", event: "sol_tape", outcome: "empty", detail: "gmgn_rpc_empty" });
+  if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn" });
 
   const gems = rankGems(gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape));
   const featured = featuredGems(gems, 6);
