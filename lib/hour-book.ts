@@ -1,4 +1,4 @@
-import { tokenLinks } from "./alert-msg";
+import { mcapInAlertBand, tokenLinks } from "./alert-msg";
 import { fetchDexMeta } from "./dexmeta";
 import type { ChainId } from "./types";
 import { formatTierLine, tierFromViews } from "./tier";
@@ -144,6 +144,7 @@ export async function hydrateHourMcaps(pack: HourBook): Promise<HourBook> {
 export function formatHourDigest(pack: HourBook) {
   const list = Object.values(pack.rows)
     .map(coerceRow)
+    .filter((row) => mcapInAlertBand(row.mcapLast || row.mcapFirst))
     .sort((a, b) => b.usd - a.usd)
     .slice(0, 12);
   if (!list.length) {

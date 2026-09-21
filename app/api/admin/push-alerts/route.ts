@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { alertKeyboard, formatAlertHtml, type AlertHit } from "@/lib/alert-msg";
 import { sessionOk } from "@/lib/admin";
+import { alertKeyboard, formatAlertHtml, mcapInAlertBand, skipAlertToken, type AlertHit } from "@/lib/alert-msg";
 import { hydrateHit } from "@/lib/dexmeta";
-import { skipAlertToken } from "@/lib/alert-msg";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +16,10 @@ export async function POST(req: Request) {
   let skipped = 0;
   for (const raw of hits) {
     const hit = await hydrateHit(raw);
+    if (!mcapInAlertBand(hit.mcap)) {
+      skipped += 1;
+      continue;
+    }
     const out = await sendTelegram(formatAlertHtml(hit), `${hit.chain}:${hit.token.toLowerCase()}`, {
       html: true,
       keyboard: alertKeyboard(hit.chain, hit.token),

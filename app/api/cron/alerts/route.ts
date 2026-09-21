@@ -4,7 +4,7 @@ import { clearHourBook, formatHourDigest, hydrateHourMcaps, noteHourHit, readHou
 import { fetchRadarBundle } from "@/lib/radar";
 import { loadSettings } from "@/lib/settings";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
-import { clusterHits } from "@/lib/alert-msg";
+import { clusterHits, mcapInAlertBand } from "@/lib/alert-msg";
 import { hydrateHit } from "@/lib/dexmeta";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,7 @@ export async function GET(req: Request) {
     const hits = clusterHits(hourTape, 60, rule.minUsd, rule.minBuys);
     for (const hit of hits) {
       const hydrated = await hydrateHit(hit);
+      if (!mcapInAlertBand(hydrated.mcap || hit.mcap)) continue;
       noteHourHit({
         chain: hydrated.chain,
         token: hydrated.token,

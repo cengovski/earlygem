@@ -1,4 +1,4 @@
-import { alertKeyboard, formatAlertHtml, isWrappedBase, skipAlertToken } from "./alert-msg";
+import { alertKeyboard, alertMcapSkipReason, formatAlertHtml, isWrappedBase } from "./alert-msg";
 import { hydrateHit } from "./dexmeta";
 import { noteLocalHit } from "./hour-client";
 import { logEvent } from "./log";
@@ -107,9 +107,7 @@ export function clusterNear(tape: TapeFill[], rule: AlertRule): NearRow[] {
 }
 
 function readyRows(rows: NearRow[], rule: AlertRule) {
-  return rows.filter(
-    (row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2 && !skipAlertToken(row),
-  );
+  return rows.filter((row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2);
 }
 
 async function fireOne(row: NearRow, rule: AlertRule) {
@@ -132,7 +130,14 @@ async function fireOne(row: NearRow, rule: AlertRule) {
       windowMin: rule.windowMin,
       handles: row.handles,
       views: tier.views,
+      mcap: row.mcapLast,
     });
+    const mcap = hit.mcap || row.mcapLast;
+    const mcapSkip = alertMcapSkipReason(mcap);
+    if (mcapSkip) {
+      setStatus(row.key, mcapSkip);
+      return;
+    }
     const notedAt = lastNote.get(row.key) || 0;
     const freshNote = Date.now() - notedAt > WINDOW_MS;
     if (freshNote) lastNote.set(row.key, Date.now());
@@ -144,7 +149,7 @@ async function fireOne(row: NearRow, rule: AlertRule) {
       usd: row.usd,
       handles: row.handles,
       mcapFirst: row.mcapFirst,
-      mcap: hit.mcap || row.mcapLast,
+      mcap,
       change24: hit.change24,
       cross: freshNote,
     });

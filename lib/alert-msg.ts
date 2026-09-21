@@ -43,7 +43,19 @@ const WRAPPED_SYM = new Set(
 );
 
 const JUNK_SYM = /^(pump|pumpfun|sol|wsol|usdc|usdt|eth|weth|bnb|wbnb|btc|wbtc|xsol|doge|arb|zec|ftt|ftx|wif|qqq|qqqx|qqy|cards)$/i;
-const MAX_ALERT_MCAP = 8_000_000;
+export const MIN_ALERT_MCAP = 250_000;
+export const MAX_ALERT_MCAP = 25_000_000;
+
+export function mcapInAlertBand(mcap: number | null | undefined) {
+  return typeof mcap === "number" && Number.isFinite(mcap) && mcap >= MIN_ALERT_MCAP && mcap <= MAX_ALERT_MCAP;
+}
+
+export function alertMcapSkipReason(mcap: number | null | undefined) {
+  if (mcap == null || !Number.isFinite(mcap) || mcap <= 0) return "MC yok";
+  if (mcap < MIN_ALERT_MCAP) return "MC < $250k";
+  if (mcap > MAX_ALERT_MCAP) return "MC > $25M";
+  return null;
+}
 
 export function isWrappedBase(token: string, symbol?: string, name?: string) {
   const addr = token.trim().toLowerCase();
@@ -59,7 +71,7 @@ export function isWrappedBase(token: string, symbol?: string, name?: string) {
 
 export function skipAlertToken(row: { token: string; symbol?: string; name?: string; mcap?: number | null }) {
   if (isWrappedBase(row.token, row.symbol, row.name)) return true;
-  if (row.mcap && row.mcap > MAX_ALERT_MCAP) return true;
+  if (row.mcap != null && row.mcap > 0 && !mcapInAlertBand(row.mcap)) return true;
   return false;
 }
 
@@ -185,6 +197,6 @@ export function clusterHits(tape: TapeFill[], windowMin: number, minUsd: number,
   }
   return [...bag.values()]
     .filter((row) => row.usd >= minUsd && row.buys >= minBuys && (row.handles || []).length >= 2)
-    .filter((row) => !row.mcap || row.mcap <= MAX_ALERT_MCAP)
+    .filter((row) => !row.mcap || mcapInAlertBand(row.mcap))
     .map(({ seen: _s, ...rest }) => rest);
 }
