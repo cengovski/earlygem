@@ -38,6 +38,10 @@ export async function GET(req: Request) {
     pack = readHourBook();
   }
 
+  if (!Object.keys(pack.rows).length) {
+    return NextResponse.json({ ok: true, skipped: true, tokens: 0, note: "empty_no_telegram" });
+  }
+
   const html = formatHourDigest(pack);
   const out = await sendTelegram(html, `hour-${new Date().toISOString().slice(0, 13)}`, { html: true });
   if (out.ok && !out.skipped) clearHourBook();
