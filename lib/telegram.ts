@@ -3,7 +3,8 @@ import { logEvent, logHttpFailure } from "./log";
 import { WINDOW_MS } from "./window";
 
 const sent = new Map<string, number>();
-const LOCK_KEY = "eg_tg_lock";
+/** Written only after a send is actually attempted. Old `eg_tg_lock` was set *before* send and skipped the first fire. */
+const SENT_KEY = "eg_tg_sent";
 
 function token() {
   if (typeof window !== "undefined") return clientTelegram().bot;
@@ -18,21 +19,29 @@ export function telegramConfigured() {
   return Boolean(token() && chat());
 }
 
-function readLock(): Record<string, number> {
+function readSent(): Record<string, number> {
   if (typeof window === "undefined") return {};
   try {
-    return JSON.parse(localStorage.getItem(LOCK_KEY) || "{}") as Record<string, number>;
+    return JSON.parse(localStorage.getItem(SENT_KEY) || "{}") as Record<string, number>;
   } catch {
     return {};
   }
 }
 
-function writeLock(map: Record<string, number>) {
+function writeSent(map: Record<string, number>) {
   if (typeof window === "undefined") return;
   const now = Date.now();
   const next: Record<string, number> = {};
   for (const [k, ts] of Object.entries(map)) if (now - ts < WINDOW_MS) next[k] = ts;
-  localStorage.setItem(LOCK_KEY, JSON.stringify(next));
+  localStorage.setItem(SENT_KEY, JSON.stringify(next));
+}
+
+export function telegramSentAgo(key: string): number | null {
+  const lock = readSent();
+  if (!lock[key]) return null;
+  const ago = Date.now() - lock[key];
+  if (ago >= WINDOW_MS) return null;
+  return ago;
 }
 
 export async function sendTelegram(
@@ -42,7 +51,7 @@ export async function sendTelegram(
 ) {
   if (!telegramConfigured()) return { ok: false, error: "telegram_env_yok" };
   if (typeof window !== "undefined") {
-    const lock = readLock();
+    const lock = readSent();
     if (key && lock[key] && Date.now() - lock[key] < WINDOW_MS) return { ok: true, skipped: true };
     const body = new URLSearchParams();
     body.set("chat_id", chat());
@@ -60,7 +69,7 @@ export async function sendTelegram(
       });
       if (key) {
         lock[key] = Date.now();
-        writeLock(lock);
+        writeSent(lock);
       }
       return { ok: true, skipped: false };
     } catch (err) {

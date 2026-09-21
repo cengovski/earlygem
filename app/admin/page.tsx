@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
+import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 import { DEFAULT_RULE, loadRule, saveRule, type AlertRule } from "@/lib/watch";
 
 export default function AdminPage() {
@@ -93,8 +94,23 @@ export default function AdminPage() {
         <label className="block text-sm">Bitquery<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.bitquery || ""} onChange={(e) => setKeys({ ...keys, bitquery: e.target.value })} /></label>
         <label className="block text-sm">Telegram bot token<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.telegramBot || ""} onChange={(e) => setKeys({ ...keys, telegramBot: e.target.value })} placeholder="123:AA..." /></label>
         <label className="block text-sm">Telegram chat id<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.telegramChat || ""} onChange={(e) => setKeys({ ...keys, telegramChat: e.target.value })} placeholder="-100..." /></label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">key kaydet</button>
+          <button
+            className="rounded-md border border-line px-3 py-1 text-sm"
+            type="button"
+            onClick={async () => {
+              saveClientKeys(keys);
+              if (!telegramConfigured()) {
+                setMsg("bot token ve chat id yaz, sonra tekrar dene");
+                return;
+              }
+              const out = await sendTelegram("<b>earlygem test</b>\nkey bu tarayıcıdan kanalına gitti.", undefined, { html: true });
+              setMsg(out.ok ? "test kanalına gitti — tape açıkken eşik dolunca alarm basılır" : out.error || "telegram hata");
+            }}
+          >
+            telegram test
+          </button>
           <button className="rounded-md border border-line px-3 py-1 text-sm" type="button" onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }); setAuthed(false); }}>çık</button>
         </div>
         {msg ? <p className="text-xs text-mute">{msg}</p> : null}
