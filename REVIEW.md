@@ -1,5 +1,7 @@
 # earlygem — inceleme ve patch raporu
 
+> **Güncel canlı rapor:** `REPORT-LIVE.md` (SHA `27d4b63`, 2026-09-21). Bu dosya `d4e0c6d` anını anlatır; 67 commit geride.
+
 Kaynak: [cengovski/earlygem](https://github.com/cengovski/earlygem) (`main` @ `d4e0c6d`, 2026-09-20).  
 Kapsam: repo ağacı, API yüzeyleri, secret akışı, VPS/CF proxy, skor/alert mantığı, ölü kod. Canlı prod’a exploit denemesi yapılmadı.
 
