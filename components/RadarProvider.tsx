@@ -5,6 +5,7 @@ import { markFeeds } from "@/lib/health";
 import { recentLogs, type LogEvent } from "@/lib/log";
 import { bustRadarCache, fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
+import { stackTape } from "@/lib/window-tape";
 
 const POLL_MS = 25_000;
 const HANG_MS = 20_000;
@@ -46,9 +47,11 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     fetchRadarBundle({ force: true })
       .then((next) => {
         if (!alive) return;
-        setBundle(next);
+        const tape = stackTape(next.tape, 10);
+        const solTape = stackTape(next.solTape || [], 10);
+        setBundle({ ...next, tape, solTape });
         lastOk.current = Date.now();
-        markFeeds(next.tape, next.traders);
+        markFeeds(tape, next.traders);
       })
       .catch(() => undefined)
       .finally(() => {
