@@ -47,8 +47,8 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     fetchRadarBundle({ force: true })
       .then((next) => {
         if (!alive) return;
-        const tape = stackTape(next.tape, 10);
-        const solTape = stackTape(next.solTape || [], 10);
+        const tape = stackTape([...(next.tape || []), ...(next.solTape || [])], 10);
+        const solTape = tape.filter((row) => row.chain === "solana");
         setBundle({ ...next, tape, solTape });
         lastOk.current = Date.now();
         markFeeds(tape, next.traders);
