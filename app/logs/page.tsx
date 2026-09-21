@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { PulseGate } from "@/components/PulseGate";
 import { RefreshButton } from "@/components/RefreshButton";
 import { Shell } from "@/components/Shell";
@@ -8,20 +7,18 @@ import { useRadar } from "@/components/RadarProvider";
 
 export default function LogsPage() {
   const { logs } = useRadar();
+  const live = logs.filter((row) => row.event !== "source" || row.outcome !== "empty" || row.detail === "pulse");
   return (
     <Shell title="Kaynak log" subtitle="Bu sekmede tarayıcının yaptığı fetch'ler. Pulse worker'a senin IP'den gider.">
       <div className="mb-4 flex items-center gap-3">
         <RefreshButton label="zorla yenile" />
-        <Link href="/api/debug" className="text-sm text-mute hover:text-accent">
-          /api/debug JSON
-        </Link>
       </div>
       <PulseGate>
         {(bundle) => (
           <>
             <div className="mb-4 text-xs text-mute">
               {bundle.meta.fetchedAt} · traders={bundle.meta.tradersSource} · cache={String(bundle.meta.fromCache)} ·{" "}
-              {bundle.meta.errors.join(" · ") || "hata yok"}
+              {bundle.meta.errors.filter((e) => e !== "traders_seeded_known").join(" · ") || "hata yok"}
             </div>
             <div className="mb-6 grid gap-2 sm:grid-cols-4">
               <div className="rounded-xl border border-line bg-surface p-3 text-sm">
@@ -48,7 +45,7 @@ export default function LogsPage() {
             </tr>
           </thead>
           <tbody>
-            {logs.map((row, i) => (
+            {live.map((row, i) => (
               <tr key={`${row.ts}-${i}`} className="border-t border-line">
                 <td className="num px-3 py-2 text-mute">{row.ts.slice(11, 19)}</td>
                 <td className="px-3 py-2">{row.level}</td>
