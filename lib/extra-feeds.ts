@@ -1,6 +1,18 @@
 import { clientExtraKeys } from "./client-keys";
+import { markSource } from "./health";
 import { classifyTrader } from "./smart";
 import type { ChainId, TapeFill, Trader } from "./types";
+
+const CABAL = "https://api.cabalspy.xyz/v1";
+const CABAL_ROTATE: Array<{ chain: string; type: string }> = [
+  { chain: "solana", type: "kol" },
+  { chain: "solana", type: "smart" },
+  { chain: "bnb", type: "kol" },
+  { chain: "base", type: "kol" },
+  { chain: "eth", type: "kol" },
+  { chain: "robinhood", type: "kol" },
+];
+let cabalAt = 0;
 
 function asChain(raw: string | undefined): ChainId {
   const s = (raw || "").toLowerCase();
@@ -52,7 +64,7 @@ function fillOf(row: {
   };
 }
 
-function traderOf(handle: string, wallet: string | null, chain: ChainId): Trader {
+function traderOf(handle: string, wallet: string | null, chain: ChainId, src: string): Trader {
   const tagged = classifyTrader({
     handle,
     followers: 0,
@@ -86,8 +98,73 @@ function traderOf(handle: string, wallet: string | null, chain: ChainId): Trader
     lastTs: Date.now(),
     kind: tagged.kind === "noise" ? "smart" : tagged.kind,
     smartScore: 60,
-    smartReasons: [`src:extra:${chain}`],
+    smartReasons: [`src:${src}`, `src:extra:${chain}`],
   };
+}
+
+function listOf(json: unknown): unknown[] {
+  if (Array.isArray(json)) return json;
+  if (!json || typeof json !== "object") return [];
+  const row = json as Record<string, unknown>;
+  for (const key of ["data", "transactions", "trades", "list", "items"]) {
+    const v = row[key];
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === "object" && Array.isArray((v as { list?: unknown[] }).list)) return (v as { list: unknown[] }).list;
+  }
+  return [];
+}
+
+function tsOf(row: Record<string, unknown>) {
+  const raw = Number(row.timestamp || row.ts || row.time || row.block_time || 0);
+  if (!raw) return 0;
+  return raw > 10_000_000_000 ? raw : raw * 1000;
+}
+
+async function pullCabal(key: string) {
+  const job = CABAL_ROTATE[cabalAt % CABAL_ROTATE.length];
+  cabalAt += 1;
+  const url = `${CABAL}/transactions/latest?blockchain=${job.chain}&type=${job.type}&limit=40`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!res.ok) {
+    markSource("cabalspy", false, 0);
+    return { fills: [] as TapeFill[], traders: [] as Trader[] };
+  }
+  const json = await res.json().catch(() => null);
+  const fills: TapeFill[] = [];
+  const traders: Trader[] = [];
+  for (const raw of listOf(json)) {
+    const row = raw as Record<string, unknown>;
+    const token = String(row.token_address || row.mint || row.token || row.contract || "");
+    if (!token) continue;
+    const side = String(row.side || row.type || row.action || "buy").toLowerCase();
+    if (side !== "buy") continue;
+    const usd = Number(row.amount_usd || row.usd || row.volume_usd || row.value_usd || 0);
+    const ts = tsOf(row);
+    if (!ts) continue;
+    const wallet = String(row.wallet || row.address || row.maker || "") || null;
+    const handle = String(row.twitter || row.twitter_username || row.name || row.username || wallet?.slice(0, 8) || "cabal");
+    const chain = asChain(String(row.blockchain || job.chain));
+    fills.push(
+      fillOf({
+        ts,
+        chain,
+        token,
+        symbol: String(row.token_symbol || row.symbol || "???"),
+        usd,
+        handle,
+        wallet,
+        tx: String(row.tx || row.tx_hash || row.signature || "") || null,
+        source: "cabalspy",
+      }),
+    );
+    traders.push(traderOf(handle, wallet, chain, "cabalspy"));
+  }
+  markSource("cabalspy", fills.length > 0, fills.length);
+  return { fills, traders };
 }
 
 async function pullMadeOnSol(key: string) {
@@ -96,47 +173,38 @@ async function pullMadeOnSol(key: string) {
     cache: "no-store",
     signal: AbortSignal.timeout(8_000),
   });
-  if (!res.ok) return { fills: [] as TapeFill[], traders: [] as Trader[] };
-  const json = (await res.json().catch(() => null)) as {
-    trades?: Array<{
-      timestamp?: number;
-      chain?: string;
-      token_address?: string;
-      token_symbol?: string;
-      usd?: number;
-      amount_usd?: number;
-      kol_name?: string;
-      wallet?: string;
-      tx?: string;
-      signature?: string;
-    }>;
-  } | null;
+  if (!res.ok) {
+    markSource("madeonsol", false, 0);
+    return { fills: [] as TapeFill[], traders: [] as Trader[] };
+  }
+  const json = await res.json().catch(() => null);
   const fills: TapeFill[] = [];
   const traders: Trader[] = [];
-  for (const row of json?.trades || []) {
-    const token = row.token_address;
+  for (const raw of listOf(json)) {
+    const row = raw as Record<string, unknown>;
+    const token = String(row.token_address || row.mint || row.token || "");
     if (!token) continue;
     const usd = Number(row.usd || row.amount_usd || 0);
-    if (usd && usd < 8) continue;
-    const ts = (row.timestamp || 0) > 10_000_000_000 ? Number(row.timestamp) : Number(row.timestamp || 0) * 1000;
+    const ts = tsOf(row);
     if (!ts) continue;
-    const handle = row.kol_name || row.wallet?.slice(0, 8) || "kol";
-    const chain = asChain(row.chain);
+    const handle = String(row.kol_name || row.wallet || "kol").slice(0, 24);
+    const chain = asChain(String(row.chain || "solana"));
     fills.push(
       fillOf({
         ts,
         chain,
         token,
-        symbol: row.token_symbol || "???",
+        symbol: String(row.token_symbol || row.symbol || "???"),
         usd,
         handle,
-        wallet: row.wallet,
-        tx: row.tx || row.signature,
+        wallet: String(row.wallet || "") || null,
+        tx: String(row.tx || row.signature || "") || null,
         source: "madeonsol",
       }),
     );
-    traders.push(traderOf(handle, row.wallet || null, chain));
+    traders.push(traderOf(handle, String(row.wallet || "") || null, chain, "madeonsol"));
   }
+  markSource("madeonsol", fills.length > 0, fills.length);
   return { fills, traders };
 }
 
@@ -146,51 +214,48 @@ async function pullSolTrack(key: string) {
     cache: "no-store",
     signal: AbortSignal.timeout(8_000),
   });
-  if (!res.ok) return { fills: [] as TapeFill[], traders: [] as Trader[] };
-  const json = (await res.json().catch(() => null)) as unknown;
-  const rows = Array.isArray(json) ? json : ((json as { trades?: unknown[] } | null)?.trades || []);
+  if (!res.ok) {
+    markSource("soltrack", false, 0);
+    return { fills: [] as TapeFill[], traders: [] as Trader[] };
+  }
+  const json = await res.json().catch(() => null);
   const fills: TapeFill[] = [];
   const traders: Trader[] = [];
-  for (const raw of rows) {
-    const row = raw as {
-      timestamp?: number;
-      token?: { address?: string; symbol?: string };
-      amountUsd?: number;
-      volume?: number;
-      wallet?: string;
-      trader?: string;
-      tx?: string;
-      signature?: string;
-    };
-    const token = row.token?.address;
-    if (!token) continue;
-    const usd = Number(row.amountUsd || row.volume || 0);
-    const ts = (row.timestamp || 0) > 10_000_000_000 ? Number(row.timestamp) : Number(row.timestamp || 0) * 1000;
+  for (const raw of listOf(json)) {
+    const row = raw as Record<string, unknown> & { token?: { address?: string; symbol?: string } };
+    const token = String(row.token?.address || row.token || "");
+    if (!token || token === "[object Object]") continue;
+    const usd = Number(row.amountUsd || row.volume || row.amount_usd || 0);
+    const ts = tsOf(row);
     if (!ts) continue;
-    const handle = row.trader || row.wallet?.slice(0, 8) || "whale";
+    const handle = String(row.trader || row.wallet || "whale").slice(0, 24);
     fills.push(
       fillOf({
         ts,
         chain: "solana",
         token,
-        symbol: row.token?.symbol || "???",
+        symbol: String(row.token?.symbol || row.symbol || "???"),
         usd,
         handle,
-        wallet: row.wallet,
-        tx: row.tx || row.signature,
+        wallet: String(row.wallet || "") || null,
+        tx: String(row.tx || row.signature || "") || null,
         source: "soltrack",
       }),
     );
-    traders.push(traderOf(handle, row.wallet || null, "solana"));
+    traders.push(traderOf(handle, String(row.wallet || "") || null, "solana", "soltrack"));
   }
+  markSource("soltrack", fills.length > 0, fills.length);
   return { fills, traders };
 }
 
 export async function fetchExtraFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
   const keys = clientExtraKeys();
   const jobs: Promise<{ fills: TapeFill[]; traders: Trader[] }>[] = [];
+  if (keys.cabalspy) jobs.push(pullCabal(keys.cabalspy).catch(() => ({ fills: [], traders: [] })));
+  else markSource("cabalspy", false, 0);
   if (keys.madeonsol) jobs.push(pullMadeOnSol(keys.madeonsol).catch(() => ({ fills: [], traders: [] })));
   if (keys.soltrack) jobs.push(pullSolTrack(keys.soltrack).catch(() => ({ fills: [], traders: [] })));
+  if (keys.bitquery) markSource("bitquery", false, 0);
   if (!jobs.length) return { fills: [], traders: [] };
   const parts = await Promise.all(jobs);
   return {
