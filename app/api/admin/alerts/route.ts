@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { alertKeyboard, clusterHits, formatAlertHtml } from "@/lib/alert-msg";
+import { alertKeyboard, clusterHits, formatAlertHtml, mcapInAlertBand } from "@/lib/alert-msg";
 import { sessionOk } from "@/lib/admin";
 import { hydrateHit } from "@/lib/dexmeta";
 import { fetchRadarBundle } from "@/lib/radar";
@@ -24,6 +24,10 @@ export async function POST(req: Request) {
   let skipped = 0;
   for (const raw of hits.slice(0, 8)) {
     const hit = await hydrateHit(raw);
+    if (!mcapInAlertBand(hit.mcap)) {
+      skipped += 1;
+      continue;
+    }
     const out = await sendTelegram(formatAlertHtml(hit), `${hit.chain}:${hit.token.toLowerCase()}`, {
       html: true,
       keyboard: alertKeyboard(hit.chain, hit.token),

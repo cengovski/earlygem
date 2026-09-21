@@ -38,7 +38,7 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
       <div className="border-b border-line px-3 py-2">
         <p className="text-sm font-medium">Eşiğe yaklaşan</p>
         <p className="text-[11px] text-mute">
-          {rule.windowMin}dk havuz · ${rule.minUsd} · {rule.minBuys} alım
+          {rule.windowMin}dk havuz · ${rule.minUsd} · {rule.minBuys} alım · MC $250k–$25M
           {tgOn ? "" : " · telegram key yok"}
         </p>
       </div>

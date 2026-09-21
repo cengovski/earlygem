@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { alertKeyboard, formatAlertHtml, isWrappedBase, type AlertHit } from "@/lib/alert-msg";
+import { alertKeyboard, formatAlertHtml, isWrappedBase, mcapInAlertBand, type AlertHit } from "@/lib/alert-msg";
 import { requireSecret } from "@/lib/auth";
 import { hydrateHit } from "@/lib/dexmeta";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
@@ -44,6 +44,9 @@ export async function POST(req: Request) {
     change24: body?.change24 ?? null,
     handles: body?.handles || [],
   });
+  if (!mcapInAlertBand(hit.mcap)) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "mcap_band" });
+  }
   const sent = await sendTelegram(formatAlertHtml(hit), `${chain}:${token.toLowerCase()}`, {
     html: true,
     keyboard: alertKeyboard(chain, token),

@@ -8,7 +8,7 @@ FOMO early gem radar. Tüm feed istekleri **tarayıcıdan / senin IP’nden** gi
 2. Radar her ~25 sn kaynakları tarayıcıdan çeker.
 3. Fill’ler **10 dakikalık havuza** yazılır (`eg_10m_pool`). Aynı tx / cüzdan+token+usd çakışmaları elenir.
 4. Tape bu havuzu basar.
-5. Eşik (varsayılan 10 dk / $1000 / 5 alım, 2 farklı handle) dolunca alarm tarayıcıdan Telegram’a gider. Aynı token 10 dk’da bir kez basılır; panelde **gönderildi** görünür.
+5. Eşik (varsayılan 10 dk / $1000 / 5 alım, 2 farklı handle) dolunca alarm tarayıcıdan Telegram’a gider. Market cap **$250k–$25M** dışındakiler basılmaz. Aynı token 10 dk’da bir kez gider; panelde **gönderildi** görünür.
 6. Saatlik özet: DexScreener linki, token ilk düştüğündeki MC, son MC.
 
 ```bash
