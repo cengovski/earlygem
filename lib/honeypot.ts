@@ -10,11 +10,14 @@ export type HoneypotScan = {
 
 export type HoneypotKeys = {
   goplus?: string;
+  goplusSecret?: string;
   honeypotis?: string;
 };
 
 const CACHE_MS = 8 * 60_000;
 const cache = new Map<string, { at: number; scan: HoneypotScan }>();
+const GOPLUS_TOKEN_URL = "https://api.gopluslabs.io/api/v1/token";
+const goplusTokenCache = new Map<string, { token: string; exp: number }>();
 
 const GOPLUS_EVM: Partial<Record<ChainId, number>> = {
   ethereum: 1,
@@ -34,6 +37,7 @@ export function honeypotKeys(): HoneypotKeys {
   const row = loadClientKeys();
   return {
     goplus: row.goplus || process.env.GOPLUS_API_KEY || "",
+    goplusSecret: row.goplusSecret || process.env.GOPLUS_APP_SECRET || "",
     honeypotis: row.honeypotis || process.env.HONEYPOTIS_API_KEY || "",
   };
 }
@@ -43,10 +47,61 @@ function on(v: unknown): boolean {
   return v === true || v === 1 || v === "1" || v === "true" || v === "yes";
 }
 
-function goplusHeaders(keys?: HoneypotKeys): Record<string, string> {
-  const key = keys?.goplus || honeypotKeys().goplus;
+async function sha1Hex(text: string) {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function goplusAccessToken(keys?: HoneypotKeys): Promise<string> {
+  const pack = keys || honeypotKeys();
+  const appKey = (pack.goplus || "").trim();
+  const secret = (pack.goplusSecret || "").trim();
+  if (!appKey) return "";
+  if (!secret) return appKey;
+
+  const hit = goplusTokenCache.get(appKey);
+  if (hit && Date.now() < hit.exp) return hit.token;
+
+  const time = Math.floor(Date.now() / 1000);
+  const sign = await sha1Hex(`${appKey}${time}${secret}`);
+  try {
+    const res = await fetch(GOPLUS_TOKEN_URL, {
+      method: "POST",
+      headers: { Accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ app_key: appKey, time, sign }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(7_000),
+    });
+    if (!res.ok) {
+      logHttpFailure({ url: GOPLUS_TOKEN_URL, event: "honeypot", source: "goplus-token", status: res.status, detail: res.statusText });
+      return "";
+    }
+    const json = (await res.json()) as { code?: number; message?: string; result?: { access_token?: string; expires_in?: number } };
+    const token = json.result?.access_token || "";
+    if (!token || (json.code != null && json.code !== 1)) {
+      logHttpFailure({
+        url: GOPLUS_TOKEN_URL,
+        event: "honeypot",
+        source: "goplus-token",
+        detail: json.message || `code ${json.code ?? "?"}`,
+      });
+      return "";
+    }
+    const ttl = Math.max(60, Number(json.result?.expires_in || 7200) - 90) * 1000;
+    goplusTokenCache.set(appKey, { token, exp: Date.now() + ttl });
+    return token;
+  } catch (err) {
+    logHttpFailure({ url: GOPLUS_TOKEN_URL, event: "honeypot", source: "goplus-token", err });
+    return "";
+  }
+}
+
+async function goplusHeaders(keys?: HoneypotKeys): Promise<Record<string, string>> {
+  const token = await goplusAccessToken(keys);
   const h: Record<string, string> = { Accept: "application/json" };
-  if (key) h.Authorization = key.startsWith("Bearer ") ? key : `Bearer ${key}`;
+  if (token) h.Authorization = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
   return h;
 }
 
@@ -78,7 +133,7 @@ async function fromGoPlusEvm(chain: ChainId, token: string, keys?: HoneypotKeys)
   if (!cid) return null;
   const json = await getJson(
     `https://api.gopluslabs.io/api/v1/token_security/${cid}?contract_addresses=${encodeURIComponent(token)}`,
-    goplusHeaders(keys),
+    await goplusHeaders(keys),
     "goplus",
   );
   const bag = (json?.result || {}) as Record<string, Record<string, unknown>>;
@@ -95,7 +150,7 @@ async function fromGoPlusEvm(chain: ChainId, token: string, keys?: HoneypotKeys)
 async function fromGoPlusSol(token: string, keys?: HoneypotKeys): Promise<{ honeypot: boolean; reasons: string[] } | null> {
   const json = await getJson(
     `https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=${encodeURIComponent(token)}`,
-    goplusHeaders(keys),
+    await goplusHeaders(keys),
     "goplus",
   );
   const bag = (json?.result || {}) as Record<string, Record<string, unknown>>;
@@ -192,6 +247,7 @@ export async function scanHoneypot(chain: ChainId, token: string, keys?: Honeypo
         cache: "no-store",
         headers: {
           ...(pack.goplus ? { "x-eg-goplus": pack.goplus } : {}),
+          ...(pack.goplusSecret ? { "x-eg-goplus-secret": pack.goplusSecret } : {}),
           ...(pack.honeypotis ? { "x-eg-honeypotis": pack.honeypotis } : {}),
         },
       });
