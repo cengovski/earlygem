@@ -69,7 +69,7 @@ function near(tape: TapeFill[], rule: AlertRule): Row[] {
 
 async function flushHour() {
   const book = loadHourBook();
-  if (!Object.keys(book.rows).length && Date.now() - book.from < 50 * 60_000) return;
+  if (!Object.keys(book.rows).length) return;
   const res = await fetch("/api/hour-flush", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -112,6 +112,10 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
       });
       return;
     }
+    const map = { ...lock };
+    const now = Date.now();
+    for (const row of fresh) map[row.key] = now;
+    writeLock(map);
     let cancel = false;
     setStatus((prev) => {
       const next = { ...prev };
@@ -136,18 +140,14 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
       .then(async (res) => {
         const json = (await res.json()) as { sent?: number; skipped?: number; error?: string };
         if (cancel) return;
-        const map = readLock();
-        const now = Date.now();
         setStatus((prev) => {
           const next = { ...prev };
           for (const row of fresh) {
-            map[row.key] = now;
             next[row.key] = !res.ok ? json.error || `tg ${res.status}` : (json.sent || 0) > 0 ? "tg ✓" : "tg kilit";
             if (res.ok && (json.sent || 0) > 0) noteLocalHit(row);
           }
           return next;
         });
-        writeLock(map);
       })
       .catch(() => {
         if (cancel) return;
