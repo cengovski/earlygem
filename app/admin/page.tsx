@@ -49,7 +49,7 @@ export default function AdminPage() {
       setMsg("telegram test gitti");
       return;
     }
-    setMsg(`tape ${json.tape} · küme ${json.hits} · giden ${json.sent} · atlanan ${json.skipped} · eşik ${json.rule?.windowMin}dk / $${json.rule?.minUsd} / ${json.rule?.minBuys}`);
+    setMsg(`tape ${json.tape} · küme ${json.hits} · giden ${json.sent} · atlanan ${json.skipped}`);
   }
 
   if (!authed) {
@@ -88,7 +88,7 @@ export default function AdminPage() {
   }
 
   return (
-    <Shell title="Admin" subtitle="Eşik cron + admin çalıştır. Key'ler localStorage.">
+    <Shell title="Admin" subtitle="Eşik + tarayıcı key. Yeni kaynaklar key yoksa sessiz.">
       <form
         className="mb-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
         onSubmit={async (e) => {
@@ -99,11 +99,10 @@ export default function AdminPage() {
             body: JSON.stringify(rule),
           });
           const json = (await res.json()) as { ok?: boolean; persisted?: string; error?: string; note?: string };
-          setMsg(json.ok ? `eşik kaydedildi (${json.persisted || "ok"}${json.note ? " / " + json.note : ""})` : json.error || "hata");
+          setMsg(json.ok ? `eşik kaydedildi (${json.persisted || "ok"})` : json.error || "hata");
         }}
       >
         <p className="text-sm font-medium">Telegram eşiği</p>
-        <p className="text-xs text-mute">Varsayılan 10dk / $1000 / 5 alım. Tape'de görünen her token alarm değil — küme eşiği gerekir.</p>
         <label className="block text-sm">pencere (dk)<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.windowMin} onChange={(e) => setRule({ ...rule, windowMin: Number(e.target.value) })} /></label>
         <label className="block text-sm">min alım USD<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={100} value={rule.minUsd} onChange={(e) => setRule({ ...rule, minUsd: Number(e.target.value) })} /></label>
         <label className="block text-sm">min alım adedi<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.minBuys} onChange={(e) => setRule({ ...rule, minBuys: Number(e.target.value) })} /></label>
@@ -126,6 +125,10 @@ export default function AdminPage() {
         <label className="block text-sm">Binance key<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceKey || ""} onChange={(e) => setKeys({ ...keys, binanceKey: e.target.value })} /></label>
         <label className="block text-sm">Binance secret<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceSecret || ""} onChange={(e) => setKeys({ ...keys, binanceSecret: e.target.value })} /></label>
         <label className="block text-sm">FOMO API<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.fomo || ""} onChange={(e) => setKeys({ ...keys, fomo: e.target.value })} placeholder="fapi_..." /></label>
+        <label className="block text-sm">CabalSpy<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.cabalspy || ""} onChange={(e) => setKeys({ ...keys, cabalspy: e.target.value })} /></label>
+        <label className="block text-sm">Solana Tracker<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.soltrack || ""} onChange={(e) => setKeys({ ...keys, soltrack: e.target.value })} /></label>
+        <label className="block text-sm">MadeOnSol<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.madeonsol || ""} onChange={(e) => setKeys({ ...keys, madeonsol: e.target.value })} placeholder="msk_..." /></label>
+        <label className="block text-sm">Bitquery<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.bitquery || ""} onChange={(e) => setKeys({ ...keys, bitquery: e.target.value })} /></label>
         <div className="flex gap-2">
           <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">key kaydet</button>
           <button className="rounded-md border border-line px-3 py-1 text-sm" type="button" onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }); setAuthed(false); }}>çık</button>
