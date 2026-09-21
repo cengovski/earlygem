@@ -11,9 +11,11 @@ const CABAL_ROTATE: Array<{ chain: string; type: string }> = [
   { chain: "bnb", type: "kol" },
   { chain: "base", type: "kol" },
   { chain: "eth", type: "kol" },
-  { chain: "robinhood", type: "kol" },
+  { chain: "rh", type: "kol" },
 ];
 let cabalAt = 0;
+const coolUntil = new Map<string, number>();
+let madeOnStore: { at: number; fills: TapeFill[]; traders: Trader[] } | null = null;
 
 function asChain(raw: string | undefined): ChainId {
   const s = (raw || "").toLowerCase();
@@ -122,11 +124,27 @@ function tsOf(row: Record<string, unknown>) {
 }
 
 async function hit(url: string, init: RequestInit, source: string) {
+  if ((coolUntil.get(source) || 0) > Date.now()) return null;
   const started = Date.now();
   try {
     const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000), ...init });
+    const ms = Date.now() - started;
+    if (res.status === 429) {
+      coolUntil.set(source, Date.now() + 5 * 60_000);
+      logHttpFailure({ url, event: source, source, status: 429, ms, detail: "rate_limit backoff 5m" });
+      return null;
+    }
     if (!res.ok) {
-      logHttpFailure({ url, event: source, source, status: res.status, ms: Date.now() - started, detail: res.statusText });
+      const snippet = await res.text().catch(() => res.statusText);
+      logHttpFailure({
+        url,
+        event: source,
+        source,
+        status: res.status,
+        ms,
+        detail: snippet.replace(/\s+/g, " ").slice(0, 160) || res.statusText,
+      });
+      if (res.status === 400) coolUntil.set(`${source}:${url}`, Date.now() + 60_000);
       return null;
     }
     return res;
@@ -180,6 +198,12 @@ async function pullCabal(key: string) {
 }
 
 async function pullMadeOnSol(key: string) {
+  if (madeOnStore && Date.now() - madeOnStore.at < 10 * 60_000 && madeOnStore.fills.length) {
+    return { fills: madeOnStore.fills, traders: madeOnStore.traders };
+  }
+  if ((coolUntil.get("madeonsol") || 0) > Date.now()) {
+    return { fills: madeOnStore?.fills || [], traders: madeOnStore?.traders || [] };
+  }
   const res = await hit(
     "https://madeonsol.com/api/v1/kol/feed?limit=20",
     { headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } },
@@ -217,6 +241,7 @@ async function pullMadeOnSol(key: string) {
     traders.push(traderOf(handle, String(row.wallet || "") || null, chain, "madeonsol"));
   }
   markSource("madeonsol", fills.length > 0, fills.length);
+  madeOnStore = { at: Date.now(), fills, traders };
   return { fills, traders };
 }
 

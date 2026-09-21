@@ -134,12 +134,15 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   }
 
   const errors: string[] = [];
-  const [status, tradersRaw, discoverSeed, tapeRaw, dexWatch] = await Promise.all([
+  const [status, tradersRaw, dexWatch] = await Promise.all([
     fetchPulseStatus().catch(() => null),
     fetchPulseTraders().catch(() => [] as Trader[]),
-    fetchPulseGems().catch(() => []),
-    fetchPulseTape(280).catch(() => [] as TapeFill[]),
     fetchSolWatch().catch(() => []),
+  ]);
+  const pulseIndex = traderIndex(tradersRaw);
+  const [discoverSeed, tapeRaw] = await Promise.all([
+    fetchPulseGems(pulseIndex).catch(() => []),
+    fetchPulseTape(280, pulseIndex).catch(() => [] as TapeFill[]),
   ]);
 
   logEvent({
