@@ -1,76 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { alertKeyboard, formatAlertHtml, isWrappedBase, skipAlertToken } from "@/lib/alert-msg";
-import { hydrateHit } from "@/lib/dexmeta";
 import { usd } from "@/lib/format";
-import { noteLocalHit } from "@/lib/hour-client";
-import { sendTelegram, telegramConfigured } from "@/lib/telegram";
-import { logEvent } from "@/lib/log";
-import { bumpTokenViews } from "@/lib/tier";
-import type { ChainId, TapeFill } from "@/lib/types";
-import { DEFAULT_RULE, loadRule, type AlertRule } from "@/lib/watch";
-import { WINDOW_MS } from "@/lib/window";
-
-const LOCK_MS = WINDOW_MS;
-const LOCK_KEY = "eg_tg_lock";
-
-type Row = {
-  key: string;
-  chain: ChainId;
-  symbol: string;
-  token: string;
-  usd: number;
-  buys: number;
-  handles: string[];
-};
-
-function readLock(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem(LOCK_KEY) || "{}") as Record<string, number>;
-  } catch {
-    return {};
-  }
-}
-
-function writeLock(map: Record<string, number>) {
-  const now = Date.now();
-  const next: Record<string, number> = {};
-  for (const [k, ts] of Object.entries(map)) if (now - ts < LOCK_MS) next[k] = ts;
-  localStorage.setItem(LOCK_KEY, JSON.stringify(next));
-}
-
-function near(tape: TapeFill[], rule: AlertRule): Row[] {
-  const since = Date.now() - rule.windowMin * 60_000;
-  const bag = new Map<string, Row & { seen: Set<string> }>();
-  for (const row of tape) {
-    if (row.side !== "buy" || row.ts < since) continue;
-    if (isWrappedBase(row.token, row.symbol, row.name)) continue;
-    const key = `${row.chain}:${row.token.toLowerCase()}`;
-    const prev = bag.get(key) || {
-      key,
-      chain: row.chain,
-      symbol: row.symbol,
-      token: row.token,
-      usd: 0,
-      buys: 0,
-      handles: [],
-      seen: new Set<string>(),
-    };
-    prev.usd += row.usd || 0;
-    prev.buys += 1;
-    const h = (row.handle || "").replace(/^@/, "");
-    if (h && !prev.seen.has(h.toLowerCase())) {
-      prev.seen.add(h.toLowerCase());
-      prev.handles.push(h);
-    }
-    bag.set(key, prev);
-  }
-  return [...bag.values()]
-    .filter((row) => row.buys >= 2 || row.usd >= rule.minUsd * 0.35)
-    .sort((a, b) => b.usd / rule.minUsd + b.buys / rule.minBuys - (a.usd / rule.minUsd + a.buys / rule.minBuys))
-    .slice(0, 12);
-}
+import { alertStatus, clusterNear, loadAlertRule, onAlertStatus } from "@/lib/alert-engine";
+import { telegramConfigured } from "@/lib/telegram";
+import type { TapeFill } from "@/lib/types";
+import { DEFAULT_RULE, type AlertRule } from "@/lib/watch";
 
 export function AlertRadar({ tape }: { tape: TapeFill[] }) {
   const [rule, setRule] = useState<AlertRule>(DEFAULT_RULE);
@@ -78,80 +13,25 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
   const [tgOn, setTgOn] = useState(false);
 
   useEffect(() => {
-    setRule(loadRule());
-    setTgOn(telegramConfigured());
+    const tick = () => {
+      setRule(loadAlertRule());
+      setTgOn(telegramConfigured());
+      setStatus(alertStatus());
+    };
+    tick();
+    const id = window.setInterval(tick, 4_000);
+    const stop = onAlertStatus(() => setStatus(alertStatus()));
+    window.addEventListener("storage", tick);
+    window.addEventListener("eg-keys", tick);
+    return () => {
+      window.clearInterval(id);
+      stop();
+      window.removeEventListener("storage", tick);
+      window.removeEventListener("eg-keys", tick);
+    };
   }, []);
 
-  const rows = useMemo(() => near(tape, rule), [tape, rule]);
-
-  useEffect(() => {
-    const lock = readLock();
-    const ready = rows.filter(
-      (row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2 && !skipAlertToken(row),
-    );
-    const fresh = ready.filter((row) => !lock[row.key] || Date.now() - lock[row.key] > LOCK_MS);
-    if (!fresh.length) {
-      setStatus((prev) => {
-        const next = { ...prev };
-        for (const row of ready) if (lock[row.key]) next[row.key] = "tg kilit";
-        return next;
-      });
-      return;
-    }
-    const map = { ...lock };
-    const now = Date.now();
-    for (const row of fresh) map[row.key] = now;
-    writeLock(map);
-    let cancel = false;
-    setStatus((prev) => {
-      const next = { ...prev };
-      for (const row of fresh) next[row.key] = tgOn ? "tg…" : "eşik";
-      return next;
-    });
-    void (async () => {
-      for (const row of fresh) {
-        if (cancel) return;
-        noteLocalHit(row);
-        if (!tgOn) {
-          setStatus((prev) => ({ ...prev, [row.key]: "eşik · tg key yok" }));
-          continue;
-        }
-        const tier = bumpTokenViews(row.chain, row.token);
-        const hit = await hydrateHit({
-          token: row.token,
-          chain: row.chain,
-          symbol: row.symbol,
-          usd: row.usd,
-          buys: row.buys,
-          windowMin: rule.windowMin,
-          handles: row.handles,
-          views: tier.views,
-        });
-        const out = await sendTelegram(formatAlertHtml(hit), row.key, {
-          html: true,
-          keyboard: alertKeyboard(hit.chain, hit.token),
-        });
-        if (!out.ok && !out.skipped) {
-          logEvent({
-            level: "error",
-            event: "telegram",
-            outcome: "error",
-            source: "telegram",
-            detail: out.error || "tg_fail",
-            url: "https://api.telegram.org/bot***/sendMessage",
-          });
-        }
-        if (cancel) return;
-        setStatus((prev) => ({
-          ...prev,
-          [row.key]: out.skipped ? "tg kilit" : out.ok ? "tg ✓" : out.error || "tg hata",
-        }));
-      }
-    })();
-    return () => {
-      cancel = true;
-    };
-  }, [rows, rule, tgOn]);
+  const rows = useMemo(() => clusterNear(tape, rule), [tape, rule]);
 
   return (
     <aside className="w-full shrink-0 rounded-xl border border-line bg-surface lg:w-72">
@@ -167,7 +47,7 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((row) => {
-            const ready = row.usd >= rule.minUsd && row.buys >= rule.minBuys;
+            const ready = row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2;
             return (
               <li key={row.key} className="px-3 py-2">
                 <div className="flex items-baseline justify-between gap-2">
@@ -179,8 +59,8 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
                 <p className="mt-0.5 font-mono text-xs">
                   {usd(row.usd)} · {row.buys} alım
                   {ready ? <span className="ml-2 text-[#7dff8a]">eşik</span> : null}
-                  {status[row.key] ? <span className="ml-2 text-mute">{status[row.key]}</span> : null}
                 </p>
+                {status[row.key] ? <p className="text-[11px] text-mute">{status[row.key]}</p> : null}
                 {row.handles.length ? (
                   <p className="truncate text-[11px] text-mute">@{row.handles.slice(0, 3).join(" @")}</p>
                 ) : null}

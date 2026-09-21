@@ -6,6 +6,8 @@ import { installBrowserFaultHooks, logEvent, onLog, recentLogs, type LogEvent } 
 import { ingestPool, readPool } from "@/lib/pool";
 import { bustRadarCache, fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
+import { runAlertPass } from "@/lib/alert-engine";
+import { maybeFlushHourDigest } from "@/lib/hour-client";
 import { WINDOW_MIN } from "@/lib/window";
 
 const POLL_MS = 25_000;
@@ -72,6 +74,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
       },
     });
     setLoading(false);
+    void runAlertPass(cached);
   }, []);
 
   useEffect(() => {
@@ -91,6 +94,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
         setBundle(pooled);
         lastOk.current = Date.now();
         markFeeds(pooled.tape, next.traders);
+        void runAlertPass(pooled.tape);
       })
       .catch((err) => {
         logEvent({
@@ -133,10 +137,23 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
       if (document.visibilityState === "visible" && Date.now() - lastOk.current > 20_000) bump();
     };
     document.addEventListener("visibilitychange", onVis);
+    const hour = window.setInterval(() => {
+      void maybeFlushHourDigest();
+    }, 30_000);
+    const onKeys = () => {
+      const tape = readPool(WINDOW_MIN);
+      if (tape.length) void runAlertPass(tape);
+    };
+    window.addEventListener("eg-keys", onKeys);
+    window.addEventListener("storage", onKeys);
+    void maybeFlushHourDigest();
     return () => {
       window.clearInterval(poll);
       window.clearInterval(watch);
+      window.clearInterval(hour);
       document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("eg-keys", onKeys);
+      window.removeEventListener("storage", onKeys);
     };
   }, [bump, loading]);
 

@@ -27,6 +27,7 @@ export function saveClientKeys(next: ClientKeys) {
   const prev = loadClientKeys();
   const merged: ClientKeys = { ...prev, ...next };
   localStorage.setItem(STORE, JSON.stringify(merged));
+  window.dispatchEvent(new Event("eg-keys"));
   return merged;
 }
 
