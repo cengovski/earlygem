@@ -1,4 +1,5 @@
 import { clientBinance } from "./client-keys";
+import { logHttpFailure } from "./log";
 import { classifyTrader } from "./smart";
 import type { ChainId, TapeFill, Trader } from "./types";
 
@@ -90,12 +91,23 @@ export async function signBinanceJobs(): Promise<BinanceTicket[]> {
 async function signedGet(path: string, query: Record<string, string>) {
   if (!binanceConfigured()) return null;
   const signed = await signOne(path, query);
-  const res = await fetch(signed.url, {
-    headers: signed.headers,
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
-  return (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  const started = Date.now();
+  try {
+    const res = await fetch(signed.url, {
+      headers: signed.headers,
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    const ms = Date.now() - started;
+    if (!res.ok) {
+      logHttpFailure({ url: signed.url, event: "binance", source: "binance", status: res.status, ms, detail: res.statusText });
+      return null;
+    }
+    return (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  } catch (err) {
+    logHttpFailure({ url: signed.url, event: "binance", source: "binance", err, ms: Date.now() - started });
+    return null;
+  }
 }
 
 type BnTrade = {
@@ -246,7 +258,8 @@ export async function fetchBinanceFeeds(): Promise<{ fills: TapeFill[]; traders:
       bag[job.id] = await signedGet(job.path, job.query);
     }
     return parseBinancePayloads(bag);
-  } catch {
+  } catch (err) {
+    logHttpFailure({ event: "binance", source: "binance", url: HOST, err });
     return { fills: [], traders: [] };
   }
 }

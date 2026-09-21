@@ -40,7 +40,7 @@ export async function getJson<T>(url: string, init?: RequestInit & { retries?: n
       if (res.status === 429 || res.status >= 500) {
         lastDetail = `${res.status} ${res.statusText}`;
         logEvent({
-          level: "warn",
+          level: res.status === 429 ? "warn" : "error",
           event: "fetch",
           outcome: "denied",
           status: res.status,
@@ -56,7 +56,7 @@ export async function getJson<T>(url: string, init?: RequestInit & { retries?: n
       }
       if (!res.ok) {
         logEvent({
-          level: "warn",
+          level: res.status >= 400 ? "error" : "warn",
           event: "fetch",
           outcome: "denied",
           status: res.status,

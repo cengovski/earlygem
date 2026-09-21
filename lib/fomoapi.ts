@@ -1,4 +1,5 @@
 import { loadClientKeys } from "./client-keys";
+import { logHttpFailure } from "./log";
 import { classifyTrader } from "./smart";
 import type { ChainId, TapeFill } from "./types";
 
@@ -43,17 +44,29 @@ export async function fomoGet<T>(path: string, query?: Record<string, string>): 
   if (!key) return null;
   await gate();
   const qs = query ? `?${new URLSearchParams(query).toString()}` : "";
-  const res = await fetch(`${HOST}${path}${qs}`, {
-    headers: { Accept: "application/json", Authorization: `Bearer ${key}` },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (res.status === 429) {
-    lastAt = Date.now() + 15_000;
+  const url = `${HOST}${path}${qs}`;
+  const started = Date.now();
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${key}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    const ms = Date.now() - started;
+    if (res.status === 429) {
+      lastAt = Date.now() + 15_000;
+      logHttpFailure({ url, event: "fomo", source: "fomo", status: 429, ms, detail: "rate_limit" });
+      return null;
+    }
+    if (!res.ok) {
+      logHttpFailure({ url, event: "fomo", source: "fomo", status: res.status, ms, detail: res.statusText });
+      return null;
+    }
+    return (await res.json().catch(() => null)) as T | null;
+  } catch (err) {
+    logHttpFailure({ url, event: "fomo", source: "fomo", err, ms: Date.now() - started });
     return null;
   }
-  if (!res.ok) return null;
-  return (await res.json().catch(() => null)) as T | null;
 }
 
 type FomoAlert = {

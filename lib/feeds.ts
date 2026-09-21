@@ -2,6 +2,7 @@ import { fetchBinanceFeeds } from "./binance";
 import { fetchFomoAlerts } from "./fomoapi";
 import { fetchExtraFeeds } from "./extra-feeds";
 import { gmgnApiKey, gmgnSlug } from "./gmgn";
+import { logHttpFailure } from "./log";
 import { classifyTrader } from "./smart";
 import { uniqueFills } from "./tape-key";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
@@ -35,16 +36,29 @@ async function gmgn(path: string, query: Record<string, string>) {
     timestamp: String(Math.floor(Date.now() / 1000)),
     client_id: crypto.randomUUID(),
   });
-  const res = await fetch(`${HOST}${path}?${params}`, {
-    headers: { "X-APIKEY": key, Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (res.status === 429) {
-    lastAt = Date.now() + 12_000;
+  const url = `${HOST}${path}?${params}`;
+  const started = Date.now();
+  try {
+    const res = await fetch(url, {
+      headers: { "X-APIKEY": key, Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    const ms = Date.now() - started;
+    if (res.status === 429) {
+      lastAt = Date.now() + 12_000;
+      logHttpFailure({ url, event: "gmgn", source: "gmgn", status: 429, ms, detail: "rate_limit" });
+      return null;
+    }
+    if (!res.ok) {
+      logHttpFailure({ url, event: "gmgn", source: "gmgn", status: res.status, ms, detail: res.statusText });
+      return null;
+    }
+    return (await res.json().catch(() => null)) as { data?: { list?: FeedRow[] } } | null;
+  } catch (err) {
+    logHttpFailure({ url, event: "gmgn", source: "gmgn", err, ms: Date.now() - started });
     return null;
   }
-  return (await res.json().catch(() => null)) as { data?: { list?: FeedRow[] } } | null;
 }
 
 type FeedRow = {
@@ -199,7 +213,12 @@ async function pullPumpRoster(): Promise<Trader[]> {
   if (pumpCache && Date.now() - pumpCache.at < 10 * 60_000) return pumpCache.rows;
   try {
     const url = PUMP_USERS;
+    const started = Date.now();
     const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) {
+      logHttpFailure({ url, event: "pumpfun", source: "pumpfun", status: res.status, ms: Date.now() - started, detail: res.statusText });
+      return pumpCache?.rows || [];
+    }
     const rows = (await res.json()) as Array<{
       username?: string;
       followers?: number;
@@ -247,7 +266,8 @@ async function pullPumpRoster(): Promise<Trader[]> {
     });
     pumpCache = { at: Date.now(), rows: traders };
     return traders;
-  } catch {
+  } catch (err) {
+    logHttpFailure({ url: PUMP_USERS, event: "pumpfun", source: "pumpfun", err });
     return pumpCache?.rows || [];
   }
 }

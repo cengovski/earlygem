@@ -1,4 +1,5 @@
 import type { AlertHit } from "./alert-msg";
+import { logHttpFailure } from "./log";
 import type { ChainId, TapeFill } from "./types";
 
 export type DexMeta = {
@@ -51,12 +52,24 @@ export async function fetchDexMeta(chain: ChainId, token: string): Promise<DexMe
       cache: "no-store",
       signal: AbortSignal.timeout(6_000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status >= 500) {
+        logHttpFailure({
+          url: `https://api.dexscreener.com/tokens/v1/${chain}/${token}`,
+          event: "dex",
+          source: "dex",
+          status: res.status,
+          detail: res.statusText,
+        });
+      }
+      return null;
+    }
     const pairs = (await res.json()) as Pair[];
     const meta = Array.isArray(pairs) ? pick(pairs, token) : null;
     if (meta) cache.set(k, { at: Date.now(), meta });
     return meta;
-  } catch {
+  } catch (err) {
+    logHttpFailure({ url: `https://api.dexscreener.com/tokens/v1/${chain}/${token}`, event: "dex", source: "dex", err });
     return null;
   }
 }

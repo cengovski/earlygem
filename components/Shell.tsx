@@ -1,6 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { RefreshButton } from "./RefreshButton";
 import { SourceDots } from "./SourceDots";
+import { useRadar } from "./RadarProvider";
+import { isFault } from "@/lib/log";
 
 const LINKS = [
   { href: "/", label: "Radar" },
@@ -23,6 +27,8 @@ export function Shell({
   title: string;
   subtitle?: string;
 }) {
+  const { logs } = useRadar();
+  const broken = logs.filter(isFault).length;
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-line/80 bg-[#12110c]/90 backdrop-blur">
@@ -35,6 +41,9 @@ export function Shell({
             {LINKS.map((l) => (
               <Link key={l.href} href={l.href} className="rounded-md px-2.5 py-1 text-mute hover:bg-surface hover:text-ink">
                 {l.label}
+                {l.href === "/logs" && broken ? (
+                  <span className="ml-1 rounded-sm bg-[#ff5a5a] px-1 font-mono text-[10px] text-[#16140c]">{broken}</span>
+                ) : null}
               </Link>
             ))}
           </nav>

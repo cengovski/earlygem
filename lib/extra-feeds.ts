@@ -1,5 +1,6 @@
 import { clientExtraKeys } from "./client-keys";
 import { markSource } from "./health";
+import { logHttpFailure } from "./log";
 import { classifyTrader } from "./smart";
 import type { ChainId, TapeFill, Trader } from "./types";
 
@@ -120,16 +121,27 @@ function tsOf(row: Record<string, unknown>) {
   return raw > 10_000_000_000 ? raw : raw * 1000;
 }
 
+async function hit(url: string, init: RequestInit, source: string) {
+  const started = Date.now();
+  try {
+    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000), ...init });
+    if (!res.ok) {
+      logHttpFailure({ url, event: source, source, status: res.status, ms: Date.now() - started, detail: res.statusText });
+      return null;
+    }
+    return res;
+  } catch (err) {
+    logHttpFailure({ url, event: source, source, err, ms: Date.now() - started });
+    return null;
+  }
+}
+
 async function pullCabal(key: string) {
   const job = CABAL_ROTATE[cabalAt % CABAL_ROTATE.length];
   cabalAt += 1;
   const url = `${CABAL}/transactions/latest?blockchain=${job.chain}&type=${job.type}&limit=40`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!res.ok) {
+  const res = await hit(url, { headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } }, "cabalspy");
+  if (!res) {
     markSource("cabalspy", false, 0);
     return { fills: [] as TapeFill[], traders: [] as Trader[] };
   }
@@ -168,12 +180,12 @@ async function pullCabal(key: string) {
 }
 
 async function pullMadeOnSol(key: string) {
-  const res = await fetch("https://madeonsol.com/api/v1/kol/feed?limit=20", {
-    headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!res.ok) {
+  const res = await hit(
+    "https://madeonsol.com/api/v1/kol/feed?limit=20",
+    { headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } },
+    "madeonsol",
+  );
+  if (!res) {
     markSource("madeonsol", false, 0);
     return { fills: [] as TapeFill[], traders: [] as Trader[] };
   }
@@ -209,12 +221,12 @@ async function pullMadeOnSol(key: string) {
 }
 
 async function pullSolTrack(key: string) {
-  const res = await fetch("https://data.solanatracker.io/trades/whales?minVolume=10000&limit=30&hideArb=true", {
-    headers: { "x-api-key": key, Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!res.ok) {
+  const res = await hit(
+    "https://data.solanatracker.io/trades/whales?minVolume=10000&limit=30&hideArb=true",
+    { headers: { "x-api-key": key, Accept: "application/json" } },
+    "soltrack",
+  );
+  if (!res) {
     markSource("soltrack", false, 0);
     return { fills: [] as TapeFill[], traders: [] as Trader[] };
   }
@@ -251,10 +263,30 @@ async function pullSolTrack(key: string) {
 export async function fetchExtraFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
   const keys = clientExtraKeys();
   const jobs: Promise<{ fills: TapeFill[]; traders: Trader[] }>[] = [];
-  if (keys.cabalspy) jobs.push(pullCabal(keys.cabalspy).catch(() => ({ fills: [], traders: [] })));
-  else markSource("cabalspy", false, 0);
-  if (keys.madeonsol) jobs.push(pullMadeOnSol(keys.madeonsol).catch(() => ({ fills: [], traders: [] })));
-  if (keys.soltrack) jobs.push(pullSolTrack(keys.soltrack).catch(() => ({ fills: [], traders: [] })));
+  if (keys.cabalspy) {
+    jobs.push(
+      pullCabal(keys.cabalspy).catch((err) => {
+        logHttpFailure({ event: "cabalspy", source: "cabalspy", url: CABAL, err });
+        return { fills: [], traders: [] };
+      }),
+    );
+  } else markSource("cabalspy", false, 0);
+  if (keys.madeonsol) {
+    jobs.push(
+      pullMadeOnSol(keys.madeonsol).catch((err) => {
+        logHttpFailure({ event: "madeonsol", source: "madeonsol", url: "https://madeonsol.com/api/v1/kol/feed", err });
+        return { fills: [], traders: [] };
+      }),
+    );
+  }
+  if (keys.soltrack) {
+    jobs.push(
+      pullSolTrack(keys.soltrack).catch((err) => {
+        logHttpFailure({ event: "soltrack", source: "soltrack", url: "https://data.solanatracker.io/trades/whales", err });
+        return { fills: [], traders: [] };
+      }),
+    );
+  }
   if (keys.bitquery) markSource("bitquery", false, 0);
   if (!jobs.length) return { fills: [], traders: [] };
   const parts = await Promise.all(jobs);
