@@ -1,3 +1,4 @@
+import { persistGet, persistSet } from "./persist";
 import { uniqueFills } from "./tape-key";
 import type { TapeFill } from "./types";
 import { WINDOW_MIN } from "./window";
@@ -8,9 +9,8 @@ const MAX = 600;
 type Stored = { fills: TapeFill[] };
 
 function load(): TapeFill[] {
-  if (typeof window === "undefined") return [];
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || "null") as Stored | TapeFill[] | null;
+    const raw = JSON.parse(persistGet(KEY) || "null") as Stored | TapeFill[] | null;
     if (Array.isArray(raw)) return raw;
     if (raw && Array.isArray(raw.fills)) return raw.fills;
   } catch {
@@ -20,12 +20,7 @@ function load(): TapeFill[] {
 }
 
 function save(fills: TapeFill[]) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ fills }));
-  } catch {
-    /* quota */
-  }
+  persistSet(KEY, JSON.stringify({ fills }));
 }
 
 function prune(rows: TapeFill[], windowMin = WINDOW_MIN) {

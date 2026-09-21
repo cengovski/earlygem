@@ -1,3 +1,5 @@
+import { persistGet, persistSet } from "./persist";
+
 export const TIER_ORDER = ["bronze", "silver", "gold", "platinum", "emerald", "diamond"] as const;
 export type TierName = (typeof TIER_ORDER)[number];
 
@@ -30,9 +32,8 @@ const KEY = "eg_token_views";
 const DAY = 24 * 60 * 60_000;
 
 function readMap(): Record<string, { n: number; at: number }> {
-  if (typeof window === "undefined") return {};
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "{}") as Record<string, { n: number; at: number }>;
+    return JSON.parse(persistGet(KEY) || "{}") as Record<string, { n: number; at: number }>;
   } catch {
     return {};
   }
@@ -42,7 +43,7 @@ function writeMap(map: Record<string, { n: number; at: number }>) {
   const cutoff = Date.now() - 3 * DAY;
   const next: Record<string, { n: number; at: number }> = {};
   for (const [k, v] of Object.entries(map)) if (v.at > cutoff) next[k] = v;
-  localStorage.setItem(KEY, JSON.stringify(next));
+  persistSet(KEY, JSON.stringify(next));
 }
 
 export function tierFromViews(views: number): TierInfo {
