@@ -5,6 +5,10 @@ export const SOURCE_LABELS = [
   { key: "pulse", label: "Pulse" },
   { key: "gmgn_kol", label: "GMGN KOL" },
   { key: "gmgn_smart", label: "GMGN SM" },
+  { key: "cabalspy", label: "Cabal" },
+  { key: "soltrack", label: "SolTrack" },
+  { key: "madeonsol", label: "MadeOn" },
+  { key: "bitquery", label: "Bitquery" },
   { key: "pumpfun", label: "Pump" },
   { key: "axiom", label: "Axiom" },
   { key: "binance", label: "Binance" },
@@ -42,9 +46,13 @@ export function markSource(key: SourceKey, ok: boolean, count = 0) {
 
 export function markFeeds(fills: TapeFill[], traders: Trader[]) {
   const flag = (name: string) => fills.filter((f) => f.flags.includes(name)).length;
-  const src = (name: string) => traders.filter((t) => t.smartReasons.includes(`src:${name}`)).length;
+  const src = (name: string) => traders.filter((t) => t.smartReasons.some((s) => s.includes(name))).length;
   markSource("gmgn_kol", flag("kol") + src("gmgn") > 0, flag("kol"));
   markSource("gmgn_smart", flag("smart") > 0, flag("smart"));
+  markSource("cabalspy", flag("cabalspy") + src("cabalspy") > 0, flag("cabalspy"));
+  markSource("soltrack", flag("soltrack") + src("soltrack") > 0, flag("soltrack"));
+  markSource("madeonsol", flag("madeonsol") + src("madeonsol") > 0, flag("madeonsol"));
+  markSource("bitquery", flag("bitquery") + src("bitquery") > 0, flag("bitquery"));
   markSource("axiom", flag("axiom") + src("axiom") > 0, flag("axiom") + src("axiom"));
   markSource("pumpfun", src("pumpfun") > 0, src("pumpfun"));
   markSource("binance", flag("binance") + src("binance") > 0, flag("binance") + src("binance"));
