@@ -1,5 +1,6 @@
+import { WINDOW_MS } from "./window";
+
 const sent = new Map<string, number>();
-const COOL_MS = 50 * 60_000;
 
 function token() {
   return process.env.TELEGRAM_BOT_TOKEN || "";
@@ -20,7 +21,7 @@ export async function sendTelegram(
   if (!telegramConfigured()) return { ok: false, error: "telegram_env_yok" };
   if (key) {
     const prev = sent.get(key) || 0;
-    if (Date.now() - prev < COOL_MS) return { ok: true, skipped: true };
+    if (Date.now() - prev < WINDOW_MS) return { ok: true, skipped: true };
   }
   const res = await fetch(`https://api.telegram.org/bot${token()}/sendMessage`, {
     method: "POST",
@@ -38,7 +39,7 @@ export async function sendTelegram(
   if (json?.ok && key) {
     sent.set(key, Date.now());
     if (sent.size > 80) {
-      const cutoff = Date.now() - COOL_MS;
+      const cutoff = Date.now() - WINDOW_MS;
       for (const [k, ts] of sent) if (ts < cutoff) sent.delete(k);
     }
   }
