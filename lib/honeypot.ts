@@ -8,6 +8,11 @@ export type HoneypotScan = {
   reasons: string[];
 };
 
+export type HoneypotKeys = {
+  goplus?: string;
+  honeypotis?: string;
+};
+
 const CACHE_MS = 8 * 60_000;
 const cache = new Map<string, { at: number; scan: HoneypotScan }>();
 
@@ -25,20 +30,28 @@ const HONEYPOT_IS_CHAIN: Partial<Record<ChainId, number>> = {
   base: 8453,
 };
 
+export function honeypotKeys(): HoneypotKeys {
+  const row = loadClientKeys();
+  return {
+    goplus: row.goplus || process.env.GOPLUS_API_KEY || "",
+    honeypotis: row.honeypotis || process.env.HONEYPOTIS_API_KEY || "",
+  };
+}
+
 function on(v: unknown): boolean {
   if (v && typeof v === "object" && "status" in (v as object)) return on((v as { status: unknown }).status);
   return v === true || v === 1 || v === "1" || v === "true" || v === "yes";
 }
 
-function goplusHeaders(): Record<string, string> {
-  const key = loadClientKeys().goplus || process.env.GOPLUS_API_KEY || "";
+function goplusHeaders(keys?: HoneypotKeys): Record<string, string> {
+  const key = keys?.goplus || honeypotKeys().goplus;
   const h: Record<string, string> = { Accept: "application/json" };
   if (key) h.Authorization = key.startsWith("Bearer ") ? key : `Bearer ${key}`;
   return h;
 }
 
-function honeypotIsHeaders(): Record<string, string> {
-  const key = loadClientKeys().honeypotis || process.env.HONEYPOTIS_API_KEY || "";
+function honeypotIsHeaders(keys?: HoneypotKeys): Record<string, string> {
+  const key = keys?.honeypotis || honeypotKeys().honeypotis;
   const h: Record<string, string> = { Accept: "application/json" };
   if (key) h["X-API-KEY"] = key;
   return h;
@@ -60,12 +73,12 @@ async function getJson(url: string, headers: Record<string, string>, source: str
   }
 }
 
-async function fromGoPlusEvm(chain: ChainId, token: string): Promise<{ honeypot: boolean; reasons: string[] } | null> {
+async function fromGoPlusEvm(chain: ChainId, token: string, keys?: HoneypotKeys): Promise<{ honeypot: boolean; reasons: string[] } | null> {
   const cid = GOPLUS_EVM[chain];
   if (!cid) return null;
   const json = await getJson(
     `https://api.gopluslabs.io/api/v1/token_security/${cid}?contract_addresses=${encodeURIComponent(token)}`,
-    goplusHeaders(),
+    goplusHeaders(keys),
     "goplus",
   );
   const bag = (json?.result || {}) as Record<string, Record<string, unknown>>;
@@ -79,10 +92,10 @@ async function fromGoPlusEvm(chain: ChainId, token: string): Promise<{ honeypot:
   return { honeypot: reasons.length > 0, reasons };
 }
 
-async function fromGoPlusSol(token: string): Promise<{ honeypot: boolean; reasons: string[] } | null> {
+async function fromGoPlusSol(token: string, keys?: HoneypotKeys): Promise<{ honeypot: boolean; reasons: string[] } | null> {
   const json = await getJson(
     `https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=${encodeURIComponent(token)}`,
-    goplusHeaders(),
+    goplusHeaders(keys),
     "goplus",
   );
   const bag = (json?.result || {}) as Record<string, Record<string, unknown>>;
@@ -98,12 +111,12 @@ async function fromGoPlusSol(token: string): Promise<{ honeypot: boolean; reason
   return { honeypot: reasons.length > 0, reasons };
 }
 
-async function fromHoneypotIs(chain: ChainId, token: string): Promise<{ honeypot: boolean; reasons: string[] } | null> {
+async function fromHoneypotIs(chain: ChainId, token: string, keys?: HoneypotKeys): Promise<{ honeypot: boolean; reasons: string[] } | null> {
   const cid = HONEYPOT_IS_CHAIN[chain];
   if (!cid) return null;
   const json = await getJson(
     `https://api.honeypot.is/v2/IsHoneypot?address=${encodeURIComponent(token)}&chainID=${cid}`,
-    honeypotIsHeaders(),
+    honeypotIsHeaders(keys),
     "honeypot.is",
   );
   if (!json) return null;
@@ -136,18 +149,18 @@ async function fromRugcheck(token: string): Promise<{ honeypot: boolean; reasons
   return { honeypot: reasons.length > 0, reasons };
 }
 
-export async function scanHoneypotDirect(chain: ChainId, token: string): Promise<HoneypotScan> {
+export async function scanHoneypotDirect(chain: ChainId, token: string, keys?: HoneypotKeys): Promise<HoneypotScan> {
   const k = `${chain}:${token.toLowerCase()}`;
   const hit = cache.get(k);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.scan;
 
   const jobs: Array<Promise<{ name: string; row: { honeypot: boolean; reasons: string[] } | null }>> = [];
   if (chain === "solana") {
-    jobs.push(fromGoPlusSol(token).then((row) => ({ name: "GoPlus", row })));
+    jobs.push(fromGoPlusSol(token, keys).then((row) => ({ name: "GoPlus", row })));
     jobs.push(fromRugcheck(token).then((row) => ({ name: "RugCheck", row })));
   } else {
-    jobs.push(fromGoPlusEvm(chain, token).then((row) => ({ name: "GoPlus", row })));
-    jobs.push(fromHoneypotIs(chain, token).then((row) => ({ name: "Honeypot.is", row })));
+    jobs.push(fromGoPlusEvm(chain, token, keys).then((row) => ({ name: "GoPlus", row })));
+    jobs.push(fromHoneypotIs(chain, token, keys).then((row) => ({ name: "Honeypot.is", row })));
   }
   const rows = await Promise.all(jobs);
   const sources: string[] = [];
@@ -171,18 +184,23 @@ export async function scanHoneypotDirect(chain: ChainId, token: string): Promise
   return scan;
 }
 
-export async function scanHoneypot(chain: ChainId, token: string): Promise<HoneypotScan> {
+export async function scanHoneypot(chain: ChainId, token: string, keys?: HoneypotKeys): Promise<HoneypotScan> {
+  const pack = keys || honeypotKeys();
   if (typeof window !== "undefined") {
     try {
       const res = await fetch(`/api/honeypot?chain=${encodeURIComponent(chain)}&token=${encodeURIComponent(token)}`, {
         cache: "no-store",
+        headers: {
+          ...(pack.goplus ? { "x-eg-goplus": pack.goplus } : {}),
+          ...(pack.honeypotis ? { "x-eg-honeypotis": pack.honeypotis } : {}),
+        },
       });
       if (res.ok) return (await res.json()) as HoneypotScan;
     } catch {
       /* fall through */
     }
   }
-  return scanHoneypotDirect(chain, token);
+  return scanHoneypotDirect(chain, token, pack);
 }
 
 export function honeypotTelegramLine(scan: HoneypotScan) {
