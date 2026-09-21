@@ -94,8 +94,6 @@ export default function AdminPage() {
         <label className="block text-sm">Bitquery<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.bitquery || ""} onChange={(e) => setKeys({ ...keys, bitquery: e.target.value })} /></label>
         <label className="block text-sm">Telegram bot token<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.telegramBot || ""} onChange={(e) => setKeys({ ...keys, telegramBot: e.target.value })} placeholder="123:AA..." /></label>
         <label className="block text-sm">Telegram chat id<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.telegramChat || ""} onChange={(e) => setKeys({ ...keys, telegramChat: e.target.value })} placeholder="-100..." /></label>
-        <label className="block text-sm">GoPlus (opsiyonel)<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.goplus || ""} onChange={(e) => setKeys({ ...keys, goplus: e.target.value })} placeholder="boş = ücretsiz public" /></label>
-        <label className="block text-sm">Honeypot.is (opsiyonel)<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.honeypotis || ""} onChange={(e) => setKeys({ ...keys, honeypotis: e.target.value })} placeholder="boş = ücretsiz public" /></label>
         <div className="flex flex-wrap gap-2">
           <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">key kaydet</button>
           <button
@@ -116,6 +114,42 @@ export default function AdminPage() {
           <button className="rounded-md border border-line px-3 py-1 text-sm" type="button" onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }); setAuthed(false); }}>çık</button>
         </div>
         {msg ? <p className="text-xs text-mute">{msg}</p> : null}
+      </form>
+      <form
+        className="mt-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveClientKeys(keys);
+          setMsg("honeypot key’ler bu tarayıcıya yazıldı");
+        }}
+      >
+        <p className="text-sm font-medium">Honeypot API</p>
+        <p className="text-xs text-mute">
+          GoPlus panosundan App Key. Kullandığımız uçlar: Token Security API (EVM, 15 CU) ve Token Security API for Solana (30 CU). Sui, NFT, approval, phishing gerekmez. Honeypot.is key boş kalabilir (şimdilik ücretsiz).
+        </p>
+        <label className="block text-sm">
+          GoPlus App Key
+          <input
+            className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs"
+            type="password"
+            value={keys.goplus || ""}
+            onChange={(e) => setKeys({ ...keys, goplus: e.target.value })}
+            placeholder="Bearer veya app key"
+          />
+        </label>
+        <label className="block text-sm">
+          Honeypot.is API key
+          <input
+            className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs"
+            type="password"
+            value={keys.honeypotis || ""}
+            onChange={(e) => setKeys({ ...keys, honeypotis: e.target.value })}
+            placeholder="boş = public, key yoksa da çalışır"
+          />
+        </label>
+        <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">
+          honeypot key kaydet
+        </button>
       </form>
     </Shell>
   );

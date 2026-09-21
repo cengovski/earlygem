@@ -13,6 +13,9 @@ export async function GET(req: Request) {
   if (!chain || !CHAINS.includes(chain) || token.length < 32) {
     return NextResponse.json({ honeypot: null, sources: [], reasons: [] });
   }
-  const scan = await scanHoneypotDirect(chain, token);
+  const scan = await scanHoneypotDirect(chain, token, {
+    goplus: req.headers.get("x-eg-goplus") || "",
+    honeypotis: req.headers.get("x-eg-honeypotis") || "",
+  });
   return NextResponse.json(scan);
 }
