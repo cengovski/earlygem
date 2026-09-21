@@ -94,6 +94,8 @@ export default function AdminPage() {
         <label className="block text-sm">Bitquery<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.bitquery || ""} onChange={(e) => setKeys({ ...keys, bitquery: e.target.value })} /></label>
         <label className="block text-sm">Telegram bot token<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.telegramBot || ""} onChange={(e) => setKeys({ ...keys, telegramBot: e.target.value })} placeholder="123:AA..." /></label>
         <label className="block text-sm">Telegram chat id<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.telegramChat || ""} onChange={(e) => setKeys({ ...keys, telegramChat: e.target.value })} placeholder="-100..." /></label>
+        <label className="block text-sm">GoPlus (opsiyonel)<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.goplus || ""} onChange={(e) => setKeys({ ...keys, goplus: e.target.value })} placeholder="boş = ücretsiz public" /></label>
+        <label className="block text-sm">Honeypot.is (opsiyonel)<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.honeypotis || ""} onChange={(e) => setKeys({ ...keys, honeypotis: e.target.value })} placeholder="boş = ücretsiz public" /></label>
         <div className="flex flex-wrap gap-2">
           <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">key kaydet</button>
           <button

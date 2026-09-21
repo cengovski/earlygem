@@ -1,4 +1,5 @@
 import { alertKeyboard, alertMcapSkipReason, formatAlertHtml, isWrappedBase } from "./alert-msg";
+import { attachHoneypot } from "./alert-honeypot";
 import { hydrateHit } from "./dexmeta";
 import { noteLocalHit } from "./hour-client";
 import { logEvent } from "./log";
@@ -138,6 +139,7 @@ async function fireOne(row: NearRow, rule: AlertRule) {
       setStatus(row.key, mcapSkip);
       return;
     }
+    const ready = await attachHoneypot({ ...hit, mcap });
     const notedAt = lastNote.get(row.key) || 0;
     const freshNote = Date.now() - notedAt > WINDOW_MS;
     if (freshNote) lastNote.set(row.key, Date.now());
@@ -157,10 +159,10 @@ async function fireOne(row: NearRow, rule: AlertRule) {
       setStatus(row.key, "eşik · telegram key yok");
       return;
     }
-    setStatus(row.key, "gönderiliyor…");
-    const out = await sendTelegram(formatAlertHtml(hit), row.key, {
+    setStatus(row.key, ready.honeypot ? "honeypot" : "gönderiliyor…");
+    const out = await sendTelegram(formatAlertHtml(ready), row.key, {
       html: true,
-      keyboard: alertKeyboard(hit.chain, hit.token),
+      keyboard: alertKeyboard(ready.chain, ready.token),
     });
     if (!out.ok && !out.skipped) {
       logEvent({
@@ -174,7 +176,7 @@ async function fireOne(row: NearRow, rule: AlertRule) {
       setStatus(row.key, out.error || "tg hata");
       return;
     }
-    setStatus(row.key, "gönderildi");
+    setStatus(row.key, "gönderildi" + (ready.honeypot ? " · honeypot" : ""));
   } catch (err) {
     logEvent({
       level: "error",

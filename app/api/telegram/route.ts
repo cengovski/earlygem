@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { attachHoneypot } from "@/lib/alert-honeypot";
 import { alertKeyboard, formatAlertHtml, isWrappedBase, mcapInAlertBand, type AlertHit } from "@/lib/alert-msg";
 import { requireSecret } from "@/lib/auth";
 import { hydrateHit } from "@/lib/dexmeta";
@@ -47,7 +48,8 @@ export async function POST(req: Request) {
   if (!mcapInAlertBand(hit.mcap)) {
     return NextResponse.json({ ok: true, skipped: true, reason: "mcap_band" });
   }
-  const sent = await sendTelegram(formatAlertHtml(hit), `${chain}:${token.toLowerCase()}`, {
+  const ready = await attachHoneypot(hit);
+  const sent = await sendTelegram(formatAlertHtml(ready), `${chain}:${token.toLowerCase()}`, {
     html: true,
     keyboard: alertKeyboard(chain, token),
   });

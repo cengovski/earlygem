@@ -11,6 +11,8 @@ export type ClientKeys = {
   bitquery?: string;
   telegramBot?: string;
   telegramChat?: string;
+  goplus?: string;
+  honeypotis?: string;
 };
 
 const STORE = "eg_client_keys";

@@ -14,6 +14,8 @@ export type AlertHit = {
   change24?: number | null;
   handles?: string[];
   views?: number;
+  honeypot?: boolean | null;
+  honeypotLine?: string;
 };
 
 const WRAPPED_ADDR = new Set(
@@ -121,10 +123,11 @@ export function formatAlertHtml(hit: AlertHit) {
   const handles = (hit.handles || []).slice(0, 4).map((h) => (h.startsWith("@") ? h : `@${h}`));
   const tier = formatTierLine(tierFromViews(hit.views || 0));
   const lines = [
-    `<b>\ud83d\udfe2 BUY CLUSTER \u00b7 ${esc(hit.chain.toUpperCase())}</b>`,
+    `<b>${hit.honeypot ? "\ud83d\udd34" : "\ud83d\udfe2"} BUY CLUSTER \u00b7 ${esc(hit.chain.toUpperCase())}</b>`,
     `<b>$${esc(hit.symbol)}</b>${hit.name && hit.name !== hit.symbol ? `  <i>${esc(hit.name)}</i>` : ""}`,
   ];
   if (tier) lines.push(tier);
+  if (hit.honeypotLine) lines.push(hit.honeypotLine);
   lines.push(
     "",
     `<code>${esc(hit.token)}</code>`,
