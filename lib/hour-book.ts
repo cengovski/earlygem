@@ -1,3 +1,5 @@
+import { formatTierLine, tierFromViews } from "./tier";
+
 export type HourRow = {
   chain: string;
   token: string;
@@ -75,14 +77,16 @@ export function formatHourDigest(pack: HourBook) {
   }
   const lines = [`<b>SAATLİK ÖZET</b>`, `${new Date(pack.from).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} – şimdi`, ""];
   for (const row of list) {
-    const mc = row.mcap && row.mcap >= 1_000_000 ? `$${(row.mcap / 1_000_000).toFixed(2)}M` : row.mcap ? `$${Math.round(row.mcap)}` : "—";
-    const ch = row.change24 != null ? `${row.change24 >= 0 ? "+" : ""}${row.change24.toFixed(1)}%` : "—";
+    const mc = row.mcap && row.mcap >= 1_000_000 ? `$${(row.mcap / 1_000_000).toFixed(2)}M` : row.mcap ? `$${Math.round(row.mcap)}` : "\u2014";
+    const ch = row.change24 != null ? `${row.change24 >= 0 ? "+" : ""}${row.change24.toFixed(1)}%` : "\u2014";
     const usd = row.usd >= 1000 ? `$${(row.usd / 1000).toFixed(1)}k` : `$${Math.round(row.usd)}`;
+    const tier = formatTierLine(tierFromViews(row.crosses));
+    lines.push(`<b>$${esc(row.symbol)}</b> \u00b7 ${esc(row.chain.toUpperCase())}`);
+    if (tier) lines.push(tier);
     lines.push(
-      `<b>$${esc(row.symbol)}</b> · ${esc(row.chain.toUpperCase())}`,
       `<code>${esc(row.token)}</code>`,
-      `${row.buys} alım · ${usd} · ${row.kols.length} KOL · eşik ${row.crosses}x`,
-      `MC ${mc} · 1s ${esc(ch)}`,
+      `${row.buys} alım \u00b7 ${usd} \u00b7 ${row.kols.length} KOL \u00b7 eşik ${row.crosses}x`,
+      `MC ${mc} \u00b7 1s ${esc(ch)}`,
       "",
     );
   }
