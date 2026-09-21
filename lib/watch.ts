@@ -7,21 +7,38 @@ export type AlertRule = {
   minBuys: number;
 };
 
+export const DEFAULT_RULE: AlertRule = { windowMin: 10, minUsd: 1000, minBuys: 5 };
+const RULE_KEY = "eg_alert_rule";
+
 export function serverRule(): AlertRule {
+  if (typeof window !== "undefined") return loadRule();
   return {
-    windowMin: Number(process.env.ALERT_WINDOW_MIN) || 10,
-    minUsd: Number(process.env.ALERT_MIN_USD) || 1000,
-    minBuys: Number(process.env.ALERT_MIN_BUYS) || 5,
+    windowMin: Number(process.env.ALERT_WINDOW_MIN) || DEFAULT_RULE.windowMin,
+    minUsd: Number(process.env.ALERT_MIN_USD) || DEFAULT_RULE.minUsd,
+    minBuys: Number(process.env.ALERT_MIN_BUYS) || DEFAULT_RULE.minBuys,
   };
 }
 
-export const DEFAULT_RULE: AlertRule = { windowMin: 10, minUsd: 1000, minBuys: 5 };
-
 export function loadRule(): AlertRule {
-  return serverRule();
+  if (typeof window === "undefined") return DEFAULT_RULE;
+  try {
+    const raw = window.localStorage.getItem(RULE_KEY);
+    if (!raw) return DEFAULT_RULE;
+    const parsed = JSON.parse(raw) as Partial<AlertRule>;
+    return {
+      windowMin: Number(parsed.windowMin) || DEFAULT_RULE.windowMin,
+      minUsd: Number(parsed.minUsd) || DEFAULT_RULE.minUsd,
+      minBuys: Number(parsed.minBuys) || DEFAULT_RULE.minBuys,
+    };
+  } catch {
+    return DEFAULT_RULE;
+  }
 }
 
-export function saveRule(_rule: AlertRule) {}
+export function saveRule(rule: AlertRule) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(RULE_KEY, JSON.stringify(rule));
+}
 
 export function clustersFromTape(tape: TapeFill[], rule: AlertRule): AlertHit[] {
   return clusterHits(tape, rule.windowMin, rule.minUsd, rule.minBuys);

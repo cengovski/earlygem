@@ -7,15 +7,10 @@ export function RefreshButton({ label = "yenile" }: { label?: string }) {
   const radar = useRadar();
   const [busy, setBusy] = useState(false);
 
-  async function onClick() {
+  function onClick() {
     setBusy(true);
-    try {
-      await fetch("/api/refresh", { method: "POST", cache: "no-store" });
-    } catch {
-      /* client reload below */
-    }
     radar.reload();
-    setBusy(false);
+    window.setTimeout(() => setBusy(false), 400);
   }
 
   return (

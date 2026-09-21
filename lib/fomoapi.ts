@@ -12,7 +12,7 @@ let alertCache: { at: number; fills: TapeFill[] } | null = null;
 
 export function fomoApiKey() {
   if (typeof window !== "undefined") {
-    return loadClientKeys().fomo || process.env.NEXT_PUBLIC_FOMO_API_KEY || "";
+    return loadClientKeys().fomo || "";
   }
   return process.env.FOMOAPI_KEY || process.env.FOMO_API_KEY || "";
 }

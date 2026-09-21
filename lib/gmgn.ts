@@ -11,7 +11,7 @@ const STOCK = /^(googlb?|gmeb?|qqqb?|nvdab?|tslab?|aaplb?|msftb?|metab?|amznb?|g
 export const GMGN_FOMO_EVM: ChainId[] = ["robinhood", "base", "bsc", "ethereum", "monad"];
 
 export function gmgnApiKey() {
-  if (typeof window !== "undefined") return clientGmgnKey() || process.env.NEXT_PUBLIC_GMGN_API_KEY || "";
+  if (typeof window !== "undefined") return clientGmgnKey();
   return process.env.GMGN_API_KEY || "";
 }
 

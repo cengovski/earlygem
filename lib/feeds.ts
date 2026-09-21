@@ -198,7 +198,7 @@ async function pullFeed(kind: "kol" | "smart", chain: ChainId, limit: number) {
 async function pullPumpRoster(): Promise<Trader[]> {
   if (pumpCache && Date.now() - pumpCache.at < 10 * 60_000) return pumpCache.rows;
   try {
-    const url = typeof window !== "undefined" ? "/api/pump-roster" : PUMP_USERS;
+    const url = PUMP_USERS;
     const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
     const rows = (await res.json()) as Array<{
       username?: string;

@@ -14,7 +14,7 @@ import { pickSmartRoster } from "@/lib/smart";
 
 export default function HomePage() {
   return (
-    <Shell title="Ağ ağ radar" subtitle="RH pulse + GMGN buy/sell (ortak FOMO cüzdan). Transfer yok. Free tier: ağlar sırayla taranır.">
+    <Shell title="Ağ ağ radar" subtitle="Key’ler tarayıcıda. 10 dk havuz, çakışma elenir, tape + alarm senin IP’nden.">
       <PulseGate>
         {(bundle) => {
           const roster = pickSmartRoster(bundle.traders, 8);

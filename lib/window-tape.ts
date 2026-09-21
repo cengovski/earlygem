@@ -1,15 +1,13 @@
 import { uniqueFills } from "./tape-key";
+import { ingestPool, readPool } from "./pool";
 import type { TapeFill } from "./types";
 import { WINDOW_MIN } from "./window";
 
-let stack: TapeFill[] = [];
-
+/** Ingest into the persisted 10m browser pool and return the filtered tape. */
 export function stackTape(incoming: TapeFill[], windowMin = WINDOW_MIN) {
-  const since = Date.now() - windowMin * 60_000;
-  stack = uniqueFills([...stack, ...incoming]).filter((row) => row.ts >= since && row.side === "buy");
-  return stack;
+  return ingestPool(incoming, windowMin);
 }
 
 export function peekStackedTape() {
-  return stack;
+  return readPool();
 }

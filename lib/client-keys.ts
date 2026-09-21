@@ -7,6 +7,8 @@ export type ClientKeys = {
   soltrack?: string;
   madeonsol?: string;
   bitquery?: string;
+  telegramBot?: string;
+  telegramChat?: string;
 };
 
 const STORE = "eg_client_keys";
@@ -40,9 +42,14 @@ export function clientBinance() {
 export function clientExtraKeys() {
   const row = loadClientKeys();
   return {
-    cabalspy: row.cabalspy || process.env.NEXT_PUBLIC_CABALSPY_KEY || "",
-    soltrack: row.soltrack || process.env.NEXT_PUBLIC_SOLTRACK_KEY || "",
-    madeonsol: row.madeonsol || process.env.NEXT_PUBLIC_MADEONSOL_KEY || "",
-    bitquery: row.bitquery || process.env.NEXT_PUBLIC_BITQUERY_KEY || "",
+    cabalspy: row.cabalspy || "",
+    soltrack: row.soltrack || "",
+    madeonsol: row.madeonsol || "",
+    bitquery: row.bitquery || "",
   };
+}
+
+export function clientTelegram() {
+  const row = loadClientKeys();
+  return { bot: row.telegramBot || "", chat: row.telegramChat || "" };
 }

@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/traders", label: "Traderlar" },
   { href: "/whales", label: "Whales" },
   { href: "/alerts", label: "Alert" },
+  { href: "/admin", label: "Admin" },
   { href: "/find", label: "Cüzdan bul" },
   { href: "/logs", label: "Log" },
 ];

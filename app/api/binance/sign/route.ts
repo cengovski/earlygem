@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
-import { binanceConfigured, signBinanceJobs } from "@/lib/binance";
 
 export const dynamic = "force-dynamic";
-export const preferredRegion = "fra1";
 
+/** Signing happens in the browser with admin localStorage keys. Never leak server tickets. */
 export async function GET() {
-  if (!binanceConfigured()) {
-    return NextResponse.json({ tickets: [], error: "binance_env_yok" }, { status: 503 });
-  }
-  const tickets = await signBinanceJobs();
-  return NextResponse.json({ tickets });
+  return NextResponse.json({ error: "gone", hint: "sign in browser" }, { status: 410 });
 }

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { isWrappedBase } from "@/lib/alert-msg";
+import { alertKeyboard, formatAlertHtml, isWrappedBase, skipAlertToken } from "@/lib/alert-msg";
+import { hydrateHit } from "@/lib/dexmeta";
 import { usd } from "@/lib/format";
-import { clearHourBookLocal, loadHourBook, noteLocalHit } from "@/lib/hour-client";
+import { noteLocalHit } from "@/lib/hour-client";
+import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 import { bumpTokenViews } from "@/lib/tier";
-import type { TapeFill } from "@/lib/types";
-import type { AlertRule } from "@/lib/watch";
+import type { ChainId, TapeFill } from "@/lib/types";
+import { DEFAULT_RULE, loadRule, type AlertRule } from "@/lib/watch";
 import { WINDOW_MS } from "@/lib/window";
 
 const LOCK_MS = WINDOW_MS;
@@ -14,7 +16,7 @@ const LOCK_KEY = "eg_tg_lock";
 
 type Row = {
   key: string;
-  chain: string;
+  chain: ChainId;
   symbol: string;
   token: string;
   usd: number;
@@ -69,42 +71,23 @@ function near(tape: TapeFill[], rule: AlertRule): Row[] {
     .slice(0, 12);
 }
 
-async function flushHour() {
-  const book = loadHourBook();
-  if (!Object.keys(book.rows).length) return;
-  const res = await fetch("/api/hour-flush", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(book),
-  });
-  if (res.ok) clearHourBookLocal();
-}
-
 export function AlertRadar({ tape }: { tape: TapeFill[] }) {
-  const [rule, setRule] = useState<AlertRule>({ windowMin: 10, minUsd: 1000, minBuys: 5 });
+  const [rule, setRule] = useState<AlertRule>(DEFAULT_RULE);
   const [status, setStatus] = useState<Record<string, string>>({});
+  const [tgOn, setTgOn] = useState(false);
 
   useEffect(() => {
-    fetch("/api/alert-rule", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((row: AlertRule) => {
-        if (row?.windowMin) setRule(row);
-      })
-      .catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      void flushHour();
-    }, 60 * 60_000);
-    return () => window.clearInterval(id);
+    setRule(loadRule());
+    setTgOn(telegramConfigured());
   }, []);
 
   const rows = useMemo(() => near(tape, rule), [tape, rule]);
 
   useEffect(() => {
     const lock = readLock();
-    const ready = rows.filter((row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2);
+    const ready = rows.filter(
+      (row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2 && !skipAlertToken(row),
+    );
     const fresh = ready.filter((row) => !lock[row.key] || Date.now() - lock[row.key] > LOCK_MS);
     if (!fresh.length) {
       setStatus((prev) => {
@@ -121,63 +104,55 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
     let cancel = false;
     setStatus((prev) => {
       const next = { ...prev };
-      for (const row of fresh) next[row.key] = "tg…";
+      for (const row of fresh) next[row.key] = tgOn ? "tg…" : "eşik";
       return next;
     });
-    fetch("/api/alert-fire", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        hits: fresh.map((row) => {
-          const tier = bumpTokenViews(row.chain, row.token);
-          return {
-            token: row.token,
-            chain: row.chain,
-            symbol: row.symbol,
-            usd: row.usd,
-            buys: row.buys,
-            windowMin: rule.windowMin,
-            handles: row.handles,
-            views: tier.views,
-          };
-        }),
-      }),
-    })
-      .then(async (res) => {
-        const json = (await res.json()) as { sent?: number; skipped?: number; error?: string };
+    void (async () => {
+      for (const row of fresh) {
         if (cancel) return;
-        setStatus((prev) => {
-          const next = { ...prev };
-          for (const row of fresh) {
-            next[row.key] = !res.ok ? json.error || `tg ${res.status}` : (json.sent || 0) > 0 ? "tg ✓" : "tg kilit";
-            if (res.ok && (json.sent || 0) > 0) noteLocalHit(row);
-          }
-          return next;
+        noteLocalHit(row);
+        if (!tgOn) {
+          setStatus((prev) => ({ ...prev, [row.key]: "eşik · tg key yok" }));
+          continue;
+        }
+        const tier = bumpTokenViews(row.chain, row.token);
+        const hit = await hydrateHit({
+          token: row.token,
+          chain: row.chain,
+          symbol: row.symbol,
+          usd: row.usd,
+          buys: row.buys,
+          windowMin: rule.windowMin,
+          handles: row.handles,
+          views: tier.views,
         });
-      })
-      .catch(() => {
+        const out = await sendTelegram(formatAlertHtml(hit), row.key, {
+          html: true,
+          keyboard: alertKeyboard(hit.chain, hit.token),
+        });
         if (cancel) return;
-        setStatus((prev) => {
-          const next = { ...prev };
-          for (const row of fresh) next[row.key] = "tg hata";
-          return next;
-        });
-      });
+        setStatus((prev) => ({
+          ...prev,
+          [row.key]: out.skipped ? "tg kilit" : out.ok ? "tg ✓" : out.error || "tg hata",
+        }));
+      }
+    })();
     return () => {
       cancel = true;
     };
-  }, [rows, rule]);
+  }, [rows, rule, tgOn]);
 
   return (
     <aside className="w-full shrink-0 rounded-xl border border-line bg-surface lg:w-72">
       <div className="border-b border-line px-3 py-2">
         <p className="text-sm font-medium">Eşiğe yaklaşan</p>
         <p className="text-[11px] text-mute">
-          {rule.windowMin}dk · ${rule.minUsd} · {rule.minBuys} alım
+          {rule.windowMin}dk havuz · ${rule.minUsd} · {rule.minBuys} alım
+          {tgOn ? "" : " · telegram key yok"}
         </p>
       </div>
       {!rows.length ? (
-        <p className="px-3 py-4 text-xs text-mute">Bu pencerede küme yok.</p>
+        <p className="px-3 py-4 text-xs text-mute">Bu 10 dk havuzda küme yok.</p>
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((row) => {

@@ -13,9 +13,7 @@ function extraOrigin() {
 
 function origins() {
   const extra = extraOrigin();
-  if (typeof window !== "undefined") {
-    return [...new Set(["/api/upstream", extra, DIRECT, WORKER].filter(Boolean))];
-  }
+  // Browser hits Pulse/worker from the user's IP. Do not proxy via Vercel /api/upstream.
   return [...new Set([extra, DIRECT, WORKER].filter(Boolean))];
 }
 

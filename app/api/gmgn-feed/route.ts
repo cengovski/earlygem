@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
-import { fetchExternalFeeds } from "@/lib/feeds";
 
 export const dynamic = "force-dynamic";
-export const preferredRegion = "fra1";
-export const maxDuration = 30;
 
+/** Feeds run in the user's browser. This server scrape is disabled. */
 export async function GET() {
-  const out = await fetchExternalFeeds();
-  return NextResponse.json({
-    fills: out.fills.slice(0, 200),
-    traders: out.traders.slice(0, 80),
-  });
+  return NextResponse.json({ error: "gone", hint: "client_only" }, { status: 410 });
 }
