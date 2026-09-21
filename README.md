@@ -38,4 +38,12 @@ npm run watch
 
 Ayarlar → Uygulamalar → Termux → Pil → **Kısıtlanmamış**. İstersen Termux:API ile kalıcı bildirim, Termux:Boot ile açılışta start.
 
-Laptop sayfasının açık olması gerekmez. Feed’ler telefonun IP’sinden gider. Oyun RAM yerse Android süreci yine kesebilir; o zaman ucuz bir 7/24 kutu (mini PC) daha durur.
+### Oyunun üstünde küçük kutu
+
+Android arka planı keser; **görünen** küçük pencere süreci önde tutar. Chrome gerekmez.
+
+1. **Termux:Float** (F-Droid / GitHub, Play Store resmi Termux değil). Aç, küçük terminali köşeye küçült. İçinde `cd earlygem && termux-wake-lock && npm run watch`. Sonra oyunu aç. Kutuyu sürükle, şeffaflığı artır.
+2. Telefonun kendi yüzen penceresi: son uygulamalar → Termux simgesi → **açılır pencere / pop-up / serbest pencere**. Minik yap, köşeye bırak, oyunu aç.
+3. İkisinde de Termux bildirimde kalsın. Bazı oyunlar overlay’i engeller; o zaman 2. yol.
+
+Laptop sayfasının açık olması gerekmez. Feed’ler telefonun IP’sinden gider. Ağır oyun + ısınma yine kesebilir; o zaman mini PC daha durur.
