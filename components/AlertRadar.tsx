@@ -7,8 +7,9 @@ import { clearHourBookLocal, loadHourBook, noteLocalHit } from "@/lib/hour-clien
 import { bumpTokenViews } from "@/lib/tier";
 import type { TapeFill } from "@/lib/types";
 import type { AlertRule } from "@/lib/watch";
+import { WINDOW_MS } from "@/lib/window";
 
-const LOCK_MS = 50 * 60_000;
+const LOCK_MS = WINDOW_MS;
 const LOCK_KEY = "eg_tg_lock";
 
 type Row = {
