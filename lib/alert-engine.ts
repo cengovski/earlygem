@@ -190,7 +190,6 @@ async function fireOne(row: NearRow, rule: AlertRule) {
 }
 
 export async function runAlertPass(tape: TapeFill[]) {
-  if (typeof window === "undefined") return;
   const rule = loadRule();
   const rows = clusterNear(tape, rule);
   const ready = readyRows(rows, rule);

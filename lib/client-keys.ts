@@ -1,3 +1,5 @@
+import { persistGet, persistSet } from "./persist";
+
 export type ClientKeys = {
   gmgn?: string;
   binanceKey?: string;
@@ -14,20 +16,18 @@ export type ClientKeys = {
 const STORE = "eg_client_keys";
 
 export function loadClientKeys(): ClientKeys {
-  if (typeof window === "undefined") return {};
   try {
-    return JSON.parse(localStorage.getItem(STORE) || "{}") as ClientKeys;
+    return JSON.parse(persistGet(STORE) || "{}") as ClientKeys;
   } catch {
     return {};
   }
 }
 
 export function saveClientKeys(next: ClientKeys) {
-  if (typeof window === "undefined") return;
   const prev = loadClientKeys();
   const merged: ClientKeys = { ...prev, ...next };
-  localStorage.setItem(STORE, JSON.stringify(merged));
-  window.dispatchEvent(new Event("eg-keys"));
+  persistSet(STORE, JSON.stringify(merged));
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("eg-keys"));
   return merged;
 }
 
@@ -43,10 +43,10 @@ export function clientBinance() {
 export function clientExtraKeys() {
   const row = loadClientKeys();
   return {
-    cabalspy: row.cabalspy || "",
-    soltrack: row.soltrack || "",
-    madeonsol: row.madeonsol || "",
-    bitquery: row.bitquery || "",
+    cabalspy: row.cabalspy || process.env.CABALSPY_KEY || "",
+    soltrack: row.soltrack || process.env.SOLTRACK_KEY || "",
+    madeonsol: row.madeonsol || process.env.MADEONSOL_KEY || "",
+    bitquery: row.bitquery || process.env.BITQUERY_KEY || "",
   };
 }
 

@@ -1,0 +1,15 @@
+{
+  "telegramBot": "123456:AA...",
+  "telegramChat": "-100...",
+  "gmgn": "",
+  "fomo": "",
+  "binanceKey": "",
+  "binanceSecret": "",
+  "cabalspy": "",
+  "soltrack": "",
+  "madeonsol": "",
+  "bitquery": "",
+  "windowMin": 10,
+  "minUsd": 1000,
+  "minBuys": 5
+}

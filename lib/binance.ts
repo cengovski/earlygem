@@ -7,12 +7,10 @@ const HOST = "https://web3.binance.com";
 const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 
 function key() {
-  if (typeof window !== "undefined") return clientBinance().key;
-  return process.env.BINANCE_WEB3_API_KEY || "";
+  return clientBinance().key || process.env.BINANCE_WEB3_API_KEY || "";
 }
 function secret() {
-  if (typeof window !== "undefined") return clientBinance().secret;
-  return process.env.BINANCE_WEB3_API_SECRET || "";
+  return clientBinance().secret || process.env.BINANCE_WEB3_API_SECRET || "";
 }
 
 export function binanceConfigured() {

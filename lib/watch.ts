@@ -1,4 +1,5 @@
 import { clusterHits, type AlertHit } from "./alert-msg";
+import { persistGet, persistSet } from "./persist";
 import type { TapeFill } from "./types";
 
 export type AlertRule = {
@@ -11,19 +12,19 @@ export const DEFAULT_RULE: AlertRule = { windowMin: 10, minUsd: 1000, minBuys: 5
 const RULE_KEY = "eg_alert_rule";
 
 export function serverRule(): AlertRule {
-  if (typeof window !== "undefined") return loadRule();
-  return {
-    windowMin: Number(process.env.ALERT_WINDOW_MIN) || DEFAULT_RULE.windowMin,
-    minUsd: Number(process.env.ALERT_MIN_USD) || DEFAULT_RULE.minUsd,
-    minBuys: Number(process.env.ALERT_MIN_BUYS) || DEFAULT_RULE.minBuys,
-  };
+  return loadRule();
 }
 
 export function loadRule(): AlertRule {
-  if (typeof window === "undefined") return DEFAULT_RULE;
   try {
-    const raw = window.localStorage.getItem(RULE_KEY);
-    if (!raw) return DEFAULT_RULE;
+    const raw = persistGet(RULE_KEY);
+    if (!raw) {
+      return {
+        windowMin: Number(process.env.ALERT_WINDOW_MIN) || DEFAULT_RULE.windowMin,
+        minUsd: Number(process.env.ALERT_MIN_USD) || DEFAULT_RULE.minUsd,
+        minBuys: Number(process.env.ALERT_MIN_BUYS) || DEFAULT_RULE.minBuys,
+      };
+    }
     const parsed = JSON.parse(raw) as Partial<AlertRule>;
     return {
       windowMin: Number(parsed.windowMin) || DEFAULT_RULE.windowMin,
@@ -36,8 +37,7 @@ export function loadRule(): AlertRule {
 }
 
 export function saveRule(rule: AlertRule) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(RULE_KEY, JSON.stringify(rule));
+  persistSet(RULE_KEY, JSON.stringify(rule));
 }
 
 export function clustersFromTape(tape: TapeFill[], rule: AlertRule): AlertHit[] {

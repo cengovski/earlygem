@@ -19,3 +19,23 @@ npm run dev
 Vercel: Next.js. Admin şifresi `ADMIN_PASSWORD`. Feed key’leri Vercel env değil, tarayıcı.
 
 Telegram çalışmıyorsa `/admin` → **telegram test**. Bot kanalda admin olmalı, chat id `-100…` grup/kanal id’si.
+
+## Android (Chrome değil)
+
+Play Store’da bu radar yok. Chrome / PWA oyun açıkken arka planda ölür. Telefonda **Termux** bir sunucu gibi `npm run watch` çalıştırır; oyun önde kalır.
+
+```bash
+pkg update
+pkg install nodejs-lts git
+git clone https://github.com/cengovski/earlygem.git
+cd earlygem
+npm install
+cp keys.example.json keys.json
+# keys.json içine telegramBot, telegramChat ve feed key’lerini yaz
+termux-wake-lock
+npm run watch
+```
+
+Ayarlar → Uygulamalar → Termux → Pil → **Kısıtlanmamış**. İstersen Termux:API ile kalıcı bildirim, Termux:Boot ile açılışta start.
+
+Laptop sayfasının açık olması gerekmez. Feed’ler telefonun IP’sinden gider. Oyun RAM yerse Android süreci yine kesebilir; o zaman ucuz bir 7/24 kutu (mini PC) daha durur.
