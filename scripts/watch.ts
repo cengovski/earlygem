@@ -41,7 +41,8 @@ function applyEnv(keys: KeyFile) {
   if (keys.gmgn) process.env.GMGN_API_KEY = keys.gmgn;
   if (keys.fomo) process.env.FOMOAPI_KEY = keys.fomo;
   if (keys.binanceKey) process.env.BINANCE_WEB3_API_KEY = keys.binanceKey;
-  if (keys.binanceSecret) process.env.BINANCE_WEB3_API_SECRET = keys.binanceSecret;
+  if (keys.goplus) process.env.GOPLUS_API_KEY = keys.goplus;
+  if (keys.honeypotis) process.env.HONEYPOTIS_API_KEY = keys.honeypotis;
   if (keys.windowMin) process.env.ALERT_WINDOW_MIN = String(keys.windowMin);
   if (keys.minUsd) process.env.ALERT_MIN_USD = String(keys.minUsd);
   if (keys.minBuys) process.env.ALERT_MIN_BUYS = String(keys.minBuys);

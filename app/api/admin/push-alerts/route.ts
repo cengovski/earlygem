@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { attachHoneypot } from "@/lib/alert-honeypot";
 import { sessionOk } from "@/lib/admin";
 import { alertKeyboard, formatAlertHtml, mcapInAlertBand, skipAlertToken, type AlertHit } from "@/lib/alert-msg";
 import { hydrateHit } from "@/lib/dexmeta";
@@ -20,9 +21,10 @@ export async function POST(req: Request) {
       skipped += 1;
       continue;
     }
-    const out = await sendTelegram(formatAlertHtml(hit), `${hit.chain}:${hit.token.toLowerCase()}`, {
+    const ready = await attachHoneypot(hit);
+    const out = await sendTelegram(formatAlertHtml(ready), `${ready.chain}:${ready.token.toLowerCase()}`, {
       html: true,
-      keyboard: alertKeyboard(hit.chain, hit.token),
+      keyboard: alertKeyboard(ready.chain, ready.token),
     });
     if (out.skipped) skipped += 1;
     else if (out.ok) sent += 1;
