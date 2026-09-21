@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { isWrappedBase } from "@/lib/alert-msg";
 import { usd } from "@/lib/format";
 import { clearHourBookLocal, loadHourBook, noteLocalHit } from "@/lib/hour-client";
+import { bumpTokenViews } from "@/lib/tier";
 import type { TapeFill } from "@/lib/types";
 import type { AlertRule } from "@/lib/watch";
 
@@ -126,15 +127,19 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        hits: fresh.map((row) => ({
-          token: row.token,
-          chain: row.chain,
-          symbol: row.symbol,
-          usd: row.usd,
-          buys: row.buys,
-          windowMin: rule.windowMin,
-          handles: row.handles,
-        })),
+        hits: fresh.map((row) => {
+          const tier = bumpTokenViews(row.chain, row.token);
+          return {
+            token: row.token,
+            chain: row.chain,
+            symbol: row.symbol,
+            usd: row.usd,
+            buys: row.buys,
+            windowMin: rule.windowMin,
+            handles: row.handles,
+            views: tier.views,
+          };
+        }),
       }),
     })
       .then(async (res) => {
