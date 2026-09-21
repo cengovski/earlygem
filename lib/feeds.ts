@@ -1,16 +1,27 @@
 import { fetchBinanceFeeds } from "./binance";
 import { fetchFomoAlerts } from "./fomoapi";
+import { fetchExtraFeeds } from "./extra-feeds";
 import { gmgnApiKey, gmgnSlug } from "./gmgn";
 import { classifyTrader } from "./smart";
+import { uniqueFills } from "./tape-key";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const HOST = "https://openapi.gmgn.ai";
 const PUMP_USERS = "https://frontend-api-v3.pump.fun/users?offset=0&limit=25&sort=followers";
-const GAP = 900;
+const GAP = 1100;
 const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 const MIN_USD = 8;
 
+const ROTATE: Array<{ kind: "kol" | "smart"; chain: ChainId }>[] = [
+  [{ kind: "kol", chain: "solana" }, { kind: "smart", chain: "solana" }],
+  [{ kind: "kol", chain: "bsc" }, { kind: "smart", chain: "bsc" }],
+  [{ kind: "kol", chain: "base" }, { kind: "smart", chain: "base" }],
+  [{ kind: "kol", chain: "ethereum" }, { kind: "smart", chain: "ethereum" }],
+  [{ kind: "kol", chain: "robinhood" }, { kind: "smart", chain: "robinhood" }],
+];
+
 let lastAt = 0;
+let rotateAt = 0;
 let pumpCache: { at: number; rows: Trader[] } | null = null;
 
 async function gmgn(path: string, query: Record<string, string>) {
@@ -30,7 +41,7 @@ async function gmgn(path: string, query: Record<string, string>) {
     signal: AbortSignal.timeout(8_000),
   });
   if (res.status === 429) {
-    lastAt = Date.now() + 8_000;
+    lastAt = Date.now() + 12_000;
     return null;
   }
   return (await res.json().catch(() => null)) as { data?: { list?: FeedRow[] } } | null;
@@ -167,7 +178,7 @@ async function pullFeed(kind: "kol" | "smart", chain: ChainId, limit: number) {
     const fill = toFill(row, chain, kind);
     if (!fill) continue;
     fills.push(fill);
-    const key = (fill.wallet || fill.handle || "").toLowerCase();
+    const key = (fill.handle || fill.wallet || "").toLowerCase();
     if (!key) continue;
     const prev = traders.get(key);
     const next = traderFromFill(fill, tagsOf(row));
@@ -244,7 +255,7 @@ async function pullPumpRoster(): Promise<Trader[]> {
 export function mergeTraders(base: Trader[], extra: Trader[]) {
   const map = new Map<string, Trader>();
   const put = (t: Trader) => {
-    const key = (t.solana || t.address || t.handle || "").toLowerCase();
+    const key = (t.handle || t.solana || t.address || "").toLowerCase();
     if (!key) return;
     const prev = map.get(key);
     if (!prev) {
@@ -263,19 +274,31 @@ export function mergeTraders(base: Trader[], extra: Trader[]) {
   };
   for (const t of base) put(t);
   for (const t of extra) put(t);
-  return [...map.values()].sort((a, b) => b.volume - a.volume || b.followers - a.followers);
+  return [...map.values()].sort((a, b) => b.volume - a.volume || b.followers - b.followers);
 }
 
 export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
-  const [kolSol, smartSol, kolBsc, pump, bn, fomo] = await Promise.all([
-    pullFeed("kol", "solana", 40),
-    pullFeed("smart", "solana", 40),
-    pullFeed("kol", "bsc", 20),
+  const pair = ROTATE[rotateAt % ROTATE.length];
+  rotateAt += 1;
+  const gmgnParts = [];
+  for (const job of pair) {
+    gmgnParts.push(await pullFeed(job.kind, job.chain, 30));
+  }
+  const [pump, bn, fomo, extra] = await Promise.all([
     pullPumpRoster(),
     fetchBinanceFeeds(),
     fetchFomoAlerts(),
+    fetchExtraFeeds(),
   ]);
-  const fills = [...kolSol.fills, ...smartSol.fills, ...kolBsc.fills, ...bn.fills, ...fomo].sort((a, b) => b.ts - a.ts);
-  const traders = mergeTraders([], [...kolSol.traders, ...smartSol.traders, ...kolBsc.traders, ...pump, ...bn.traders]);
+  const fills = uniqueFills([
+    ...gmgnParts.flatMap((p) => p.fills),
+    ...bn.fills,
+    ...fomo,
+    ...extra.fills,
+  ]).sort((a, b) => b.ts - a.ts);
+  const traders = mergeTraders(
+    [],
+    [...gmgnParts.flatMap((p) => p.traders), ...pump, ...bn.traders, ...extra.traders],
+  );
   return { fills, traders };
 }
