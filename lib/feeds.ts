@@ -1,16 +1,14 @@
 import { fetchBinanceFeeds } from "./binance";
 import { fetchFomoAlerts } from "./fomoapi";
 import { fetchExtraFeeds } from "./extra-feeds";
-import { gmgnApiKey, gmgnSlug } from "./gmgn";
+import { gmgnRequest, gmgnSlug } from "./gmgn";
 import { logHttpFailure } from "./log";
 import { PULSE_WORKER } from "./pulse";
 import { classifyTrader } from "./smart";
 import { uniqueFills } from "./tape-key";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
-const HOST = "https://openapi.gmgn.ai";
 const PUMP_USERS = "https://frontend-api-v3.pump.fun/users?offset=0&limit=25&sort=followers";
-const GAP = 1100;
 const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 const MIN_USD = 8;
 
@@ -22,44 +20,11 @@ const ROTATE: Array<{ kind: "kol" | "smart"; chain: ChainId }>[] = [
   [{ kind: "kol", chain: "robinhood" }, { kind: "smart", chain: "robinhood" }],
 ];
 
-let lastAt = 0;
 let rotateAt = 0;
 let pumpCache: { at: number; rows: Trader[] } | null = null;
 
 async function gmgn(path: string, query: Record<string, string>) {
-  const key = gmgnApiKey();
-  if (!key) return null;
-  const wait = GAP - (Date.now() - lastAt);
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  lastAt = Date.now();
-  const params = new URLSearchParams({
-    ...query,
-    timestamp: String(Math.floor(Date.now() / 1000)),
-    client_id: crypto.randomUUID(),
-  });
-  const url = `${HOST}${path}?${params}`;
-  const started = Date.now();
-  try {
-    const res = await fetch(url, {
-      headers: { "X-APIKEY": key, Accept: "application/json" },
-      cache: "no-store",
-      signal: AbortSignal.timeout(8_000),
-    });
-    const ms = Date.now() - started;
-    if (res.status === 429) {
-      lastAt = Date.now() + 12_000;
-      logHttpFailure({ url, event: "gmgn", source: "gmgn", status: 429, ms, detail: "rate_limit" });
-      return null;
-    }
-    if (!res.ok) {
-      logHttpFailure({ url, event: "gmgn", source: "gmgn", status: res.status, ms, detail: res.statusText });
-      return null;
-    }
-    return (await res.json().catch(() => null)) as { data?: { list?: FeedRow[] } } | null;
-  } catch (err) {
-    logHttpFailure({ url, event: "gmgn", source: "gmgn", err, ms: Date.now() - started });
-    return null;
-  }
+  return (await gmgnRequest(path, query)) as { data?: { list?: FeedRow[] } } | null;
 }
 
 type FeedRow = {

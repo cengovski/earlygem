@@ -1,8 +1,6 @@
-import { gmgnApiKey, gmgnSlug } from "./gmgn";
+import { gmgnRequest, gmgnSlug } from "./gmgn";
 import type { ChainId, Gem } from "./types";
 
-const HOST = "https://openapi.gmgn.ai";
-const GAP = 900;
 const CACHE_MS = 15 * 60_000;
 
 type Scan = {
@@ -14,11 +12,6 @@ type Scan = {
 };
 
 const cache = new Map<string, Scan>();
-let lastAt = 0;
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 function keyOf(chain: ChainId, token: string) {
   return `${chain}:${token.toLowerCase()}`;
@@ -42,20 +35,7 @@ function truthy(v: unknown) {
 }
 
 async function gmgn(path: string, query: Record<string, string>) {
-  const wait = GAP - (Date.now() - lastAt);
-  if (wait > 0) await sleep(wait);
-  lastAt = Date.now();
-  const params = new URLSearchParams({
-    ...query,
-    timestamp: String(Math.floor(Date.now() / 1000)),
-    client_id: crypto.randomUUID(),
-  });
-  const res = await fetch(`${HOST}${path}?${params}`, {
-    headers: { "X-APIKEY": gmgnApiKey(), Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(7_000),
-  });
-  return (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  return gmgnRequest(path, query);
 }
 
 async function scanOne(chain: ChainId, token: string): Promise<Scan> {

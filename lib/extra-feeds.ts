@@ -130,8 +130,16 @@ async function hit(url: string, init: RequestInit, source: string) {
     const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000), ...init });
     const ms = Date.now() - started;
     if (res.status === 429) {
-      coolUntil.set(source, Date.now() + 5 * 60_000);
-      logHttpFailure({ url, event: source, source, status: 429, ms, detail: "rate_limit backoff 5m" });
+      const wait = source === "madeonsol" ? 20 * 60_000 : 5 * 60_000;
+      coolUntil.set(source, Date.now() + wait);
+      logHttpFailure({
+        url,
+        event: source,
+        source,
+        status: 429,
+        ms,
+        detail: source === "madeonsol" ? "rate_limit backoff 20m" : "rate_limit backoff 5m",
+      });
       return null;
     }
     if (!res.ok) {
@@ -198,11 +206,11 @@ async function pullCabal(key: string) {
 }
 
 async function pullMadeOnSol(key: string) {
-  if (madeOnStore && Date.now() - madeOnStore.at < 10 * 60_000 && madeOnStore.fills.length) {
-    return { fills: madeOnStore.fills, traders: madeOnStore.traders };
-  }
   if ((coolUntil.get("madeonsol") || 0) > Date.now()) {
     return { fills: madeOnStore?.fills || [], traders: madeOnStore?.traders || [] };
+  }
+  if (madeOnStore && Date.now() - madeOnStore.at < 10 * 60_000) {
+    return { fills: madeOnStore.fills, traders: madeOnStore.traders };
   }
   const res = await hit(
     "https://madeonsol.com/api/v1/kol/feed?limit=20",

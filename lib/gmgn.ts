@@ -52,6 +52,7 @@ type GmgnEnvelope = {
 };
 
 let lastAt = 0;
+let coolUntil = 0;
 let evmCursor = 0;
 
 async function gate() {
@@ -60,9 +61,11 @@ async function gate() {
   lastAt = Date.now();
 }
 
-async function gmgnGet(path: string, query: Record<string, string | number | undefined>): Promise<GmgnEnvelope | null> {
+/** Browser hits /api/gmgn so Cloudflare/Opera cannot kill openapi.gmgn.ai with Failed to fetch. */
+export async function gmgnRequest(path: string, query: Record<string, string | number | undefined>): Promise<Record<string, unknown> | null> {
   const key = gmgnApiKey();
   if (!key) return null;
+  if (Date.now() < coolUntil) return null;
   const params = new URLSearchParams();
   for (const [k, value] of Object.entries(query)) {
     if (value == null || value === "") continue;
@@ -71,29 +74,42 @@ async function gmgnGet(path: string, query: Record<string, string | number | und
   params.set("timestamp", String(Math.floor(Date.now() / 1000)));
   params.set("client_id", crypto.randomUUID());
   await gate();
-  const url = `${HOST}${path}?${params.toString()}`;
+  const upstream = `${HOST}${path}?${params.toString()}`;
+  const url =
+    typeof window !== "undefined" ? `/api/gmgn?path=${encodeURIComponent(path)}&${params.toString()}` : upstream;
   const started = Date.now();
   try {
     const res = await fetch(url, {
-      headers: { "X-APIKEY": key, Accept: "application/json" },
+      headers:
+        typeof window !== "undefined"
+          ? { "x-eg-gmgn": key, Accept: "application/json" }
+          : { "X-APIKEY": key, Accept: "application/json" },
       cache: "no-store",
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(10_000),
     });
     const ms = Date.now() - started;
-    const json = (await res.json().catch(() => null)) as GmgnEnvelope | null;
-    if (res.status === 429 || json?.error === "RATE_LIMIT_EXCEEDED" || json?.error === "RATE_LIMIT_BANNED") {
-      logHttpFailure({ url, event: "gmgn", source: "gmgn", status: 429, ms, detail: json?.error || "rate_limit" });
+    const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    const errText = typeof json?.error === "string" ? json.error : "";
+    if (res.status === 429 || errText === "RATE_LIMIT_EXCEEDED" || errText === "RATE_LIMIT_BANNED") {
+      coolUntil = Date.now() + 20_000;
+      logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", status: 429, ms, detail: errText || "rate_limit" });
       return null;
     }
     if (!res.ok || !json) {
-      logHttpFailure({ url, event: "gmgn", source: "gmgn", status: res.status, ms, detail: json?.error || res.statusText });
+      if (res.status === 401 || res.status === 403) coolUntil = Date.now() + 60_000;
+      logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", status: res.status, ms, detail: errText || res.statusText });
       return null;
     }
     return json;
   } catch (err) {
-    logHttpFailure({ url, event: "gmgn", source: "gmgn", err, ms: Date.now() - started });
+    coolUntil = Date.now() + 45_000;
+    logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", err, ms: Date.now() - started });
     return null;
   }
+}
+
+async function gmgnGet(path: string, query: Record<string, string | number | undefined>): Promise<GmgnEnvelope | null> {
+  return (await gmgnRequest(path, query)) as GmgnEnvelope | null;
 }
 
 function num(v: string | number | null | undefined) {
