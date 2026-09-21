@@ -3,6 +3,7 @@ import { fetchFomoAlerts } from "./fomoapi";
 import { fetchExtraFeeds } from "./extra-feeds";
 import { gmgnApiKey, gmgnSlug } from "./gmgn";
 import { logHttpFailure } from "./log";
+import { PULSE_WORKER } from "./pulse";
 import { classifyTrader } from "./smart";
 import { uniqueFills } from "./tape-key";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
@@ -211,65 +212,75 @@ async function pullFeed(kind: "kol" | "smart", chain: ChainId, limit: number) {
 
 async function pullPumpRoster(): Promise<Trader[]> {
   if (pumpCache && Date.now() - pumpCache.at < 10 * 60_000) return pumpCache.rows;
-  try {
-    const url = PUMP_USERS;
+  const urls =
+    typeof window !== "undefined" ? ["/api/pump-roster", `${PULSE_WORKER}/pump/users`] : [PUMP_USERS];
+  for (const url of urls) {
     const started = Date.now();
-    const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
-    if (!res.ok) {
-      logHttpFailure({ url, event: "pumpfun", source: "pumpfun", status: res.status, ms: Date.now() - started, detail: res.statusText });
-      return pumpCache?.rows || [];
-    }
-    const rows = (await res.json()) as Array<{
-      username?: string;
-      followers?: number;
-      canonical_svm_wallet?: string;
-      canonical_evm_wallet?: string;
-      x_username?: string | null;
-      profile_image?: string;
-    }>;
-    if (!Array.isArray(rows) || !rows.length) return pumpCache?.rows || [];
-    const traders = rows.slice(0, 25).map((row) => {
-      const handle = row.x_username || row.username || row.canonical_svm_wallet?.slice(0, 8) || "pump";
-      const tagged = classifyTrader({
-        handle,
-        followers: row.followers || 0,
-        rank: null,
-        volume: 0,
-        realized: 0,
-        unrealized: 0,
-        wins: 0,
-        trips: 0,
-        fills: 0,
+    try {
+      const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
+      if (!res.ok) {
+        logHttpFailure({
+          url,
+          event: "pumpfun",
+          source: "pumpfun",
+          status: res.status,
+          ms: Date.now() - started,
+          detail: res.statusText,
+        });
+        continue;
+      }
+      const rows = (await res.json()) as Array<{
+        username?: string;
+        followers?: number;
+        canonical_svm_wallet?: string;
+        canonical_evm_wallet?: string;
+        x_username?: string | null;
+        profile_image?: string;
+      }>;
+      if (!Array.isArray(rows) || !rows.length) continue;
+      const traders = rows.slice(0, 25).map((row) => {
+        const handle = row.x_username || row.username || row.canonical_svm_wallet?.slice(0, 8) || "pump";
+        const tagged = classifyTrader({
+          handle,
+          followers: row.followers || 0,
+          rank: null,
+          volume: 0,
+          realized: 0,
+          unrealized: 0,
+          wins: 0,
+          trips: 0,
+          fills: 0,
+        });
+        return {
+          handle,
+          address: row.canonical_evm_wallet || null,
+          solana: row.canonical_svm_wallet || null,
+          displayName: row.username || handle,
+          avatarUrl: row.profile_image || null,
+          followers: row.followers || 0,
+          clan: null,
+          profileUrl: row.x_username ? `https://x.com/${row.x_username}` : `https://pump.fun/profile/${row.username || ""}`,
+          fills: 0,
+          volume: 0,
+          realized: 0,
+          unrealized: 0,
+          wins: 0,
+          trips: 0,
+          openTokens: 0,
+          rank: null,
+          lastTs: null,
+          kind: tagged.kind === "noise" ? "smart" : tagged.kind,
+          smartScore: Math.max(tagged.smartScore, 55),
+          smartReasons: ["src:pumpfun"],
+        } satisfies Trader;
       });
-      return {
-        handle,
-        address: row.canonical_evm_wallet || null,
-        solana: row.canonical_svm_wallet || null,
-        displayName: row.username || handle,
-        avatarUrl: row.profile_image || null,
-        followers: row.followers || 0,
-        clan: null,
-        profileUrl: row.x_username ? `https://x.com/${row.x_username}` : `https://pump.fun/profile/${row.username || ""}`,
-        fills: 0,
-        volume: 0,
-        realized: 0,
-        unrealized: 0,
-        wins: 0,
-        trips: 0,
-        openTokens: 0,
-        rank: null,
-        lastTs: null,
-        kind: tagged.kind === "noise" ? "smart" : tagged.kind,
-        smartScore: Math.max(tagged.smartScore, 55),
-        smartReasons: ["src:pumpfun"],
-      } satisfies Trader;
-    });
-    pumpCache = { at: Date.now(), rows: traders };
-    return traders;
-  } catch (err) {
-    logHttpFailure({ url: PUMP_USERS, event: "pumpfun", source: "pumpfun", err });
-    return pumpCache?.rows || [];
+      pumpCache = { at: Date.now(), rows: traders };
+      return traders;
+    } catch (err) {
+      logHttpFailure({ url, event: "pumpfun", source: "pumpfun", err });
+    }
   }
+  return pumpCache?.rows || [];
 }
 
 export function mergeTraders(base: Trader[], extra: Trader[]) {

@@ -123,6 +123,16 @@ function hydrate() {
 function persistFault(row: LogEvent) {
   if (!isFault(row) || typeof window === "undefined") return;
   const prev = loadFaults();
+  const t = Date.parse(row.ts) || Date.now();
+  const dup = prev.find(
+    (p) =>
+      p.source === row.source &&
+      p.event === row.event &&
+      p.kind === row.kind &&
+      p.url === row.url &&
+      Math.abs(t - (Date.parse(p.ts) || 0)) < 120_000,
+  );
+  if (dup) return;
   const next = [row, ...prev].slice(0, FAULT_MAX);
   saveFaults(next);
 }

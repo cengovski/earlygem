@@ -1,7 +1,9 @@
-import { logEvent } from "./log";
+import { logEvent, logHttpFailure } from "./log";
 
 const WORKER = "https://damp-butterfly-34a4.cengovski.workers.dev";
 const DIRECT = "https://fomopulse.app";
+
+export const PULSE_WORKER = WORKER;
 
 function extraOrigin() {
   const env =
@@ -13,8 +15,12 @@ function extraOrigin() {
 
 function origins() {
   const extra = extraOrigin();
-  // Browser hits Pulse/worker from the user's IP. Do not proxy via Vercel /api/upstream.
-  return [...new Set([extra, DIRECT, WORKER].filter(Boolean))];
+  const httpsExtra = extra.startsWith("https://") ? extra : "";
+  // fomopulse.app is Cloudflare-challenged and has no CORS. Browser uses the worker.
+  if (typeof window !== "undefined") {
+    return [...new Set([httpsExtra, WORKER].filter(Boolean))];
+  }
+  return [...new Set([httpsExtra || extra, DIRECT, WORKER].filter(Boolean))];
 }
 
 export const PULSE_ORIGINS = origins();
@@ -33,8 +39,12 @@ async function readBodySnippet(res: Response): Promise<string> {
   }
 }
 
-export async function getJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+export async function getJson<T>(
+  url: string,
+  init?: RequestInit & { quiet?: boolean },
+): Promise<T | null> {
   const started = Date.now();
+  const quiet = Boolean(init?.quiet);
   try {
     const res = await fetch(url, {
       ...init,
@@ -45,22 +55,36 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T | n
     const ms = Date.now() - started;
     const snippet = await readBodySnippet(res);
     if (!res.ok || isChallenge(snippet)) {
-      logEvent({ level: "warn", event: "fetch", outcome: "denied", status: res.status, url, ms, detail: snippet });
+      if (!quiet) {
+        logEvent({
+          level: "warn",
+          event: "fetch",
+          outcome: "denied",
+          status: res.status,
+          url,
+          ms,
+          detail: isChallenge(snippet) ? "cf_challenge" : snippet,
+        });
+      }
       return null;
     }
     const data = (await res.json()) as T;
     const count = Array.isArray(data) ? data.length : 1;
-    logEvent({ level: "info", event: "fetch", outcome: count ? "ok" : "empty", status: res.status, url, ms, count });
+    if (!quiet) {
+      logEvent({ level: "info", event: "fetch", outcome: count ? "ok" : "empty", status: res.status, url, ms, count });
+    }
     return data;
   } catch (err) {
-    logEvent({
-      level: "error",
-      event: "fetch",
-      outcome: "error",
-      url,
-      ms: Date.now() - started,
-      detail: err instanceof Error ? err.message : "fetch_failed",
-    });
+    if (!quiet) {
+      logEvent({
+        level: "error",
+        event: "fetch",
+        outcome: "error",
+        url,
+        ms: Date.now() - started,
+        detail: err instanceof Error ? err.message : "fetch_failed",
+      });
+    }
     return null;
   }
 }
@@ -68,10 +92,15 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T | n
 export async function getPulse<T>(pathAndQuery: string): Promise<T | null> {
   const path = pathAndQuery.startsWith("/") ? pathAndQuery : `/${pathAndQuery}`;
   const list = origins();
-  for (const origin of list) {
+  for (let i = 0; i < list.length; i++) {
+    const origin = list[i];
     const url = origin.startsWith("/") ? `${origin}${path.replace(/^\/api/, "")}` : `${origin}${path}`;
-    const data = await getJson<T>(url);
+    const last = i === list.length - 1;
+    const data = await getJson<T>(url, { quiet: !last });
     if (data) return data;
+  }
+  if (!list.length) {
+    logHttpFailure({ event: "pulse", source: "pulse", url: DIRECT + path, detail: "no_pulse_origin" });
   }
   return null;
 }
