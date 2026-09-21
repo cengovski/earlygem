@@ -1,3 +1,4 @@
+import { formatTierLine, tierFromViews } from "./tier";
 import type { ChainId, TapeFill } from "./types";
 
 export type AlertHit = {
@@ -12,6 +13,7 @@ export type AlertHit = {
   liquidity?: number | null;
   change24?: number | null;
   handles?: string[];
+  views?: number;
 };
 
 const WRAPPED_ADDR = new Set(
@@ -105,15 +107,19 @@ export function formatAlertHtml(hit: AlertHit) {
       ? `${hit.change24 >= 0 ? "+" : ""}${hit.change24.toFixed(1)}%`
       : "\u2014";
   const handles = (hit.handles || []).slice(0, 4).map((h) => (h.startsWith("@") ? h : `@${h}`));
+  const tier = formatTierLine(tierFromViews(hit.views || 0));
   const lines = [
     `<b>\ud83d\udfe2 BUY CLUSTER \u00b7 ${esc(hit.chain.toUpperCase())}</b>`,
     `<b>$${esc(hit.symbol)}</b>${hit.name && hit.name !== hit.symbol ? `  <i>${esc(hit.name)}</i>` : ""}`,
+  ];
+  if (tier) lines.push(tier);
+  lines.push(
     "",
     `<code>${esc(hit.token)}</code>`,
     "",
     `MC ${money(hit.mcap)}   LP ${money(hit.liquidity)}   24h ${esc(pct)}`,
     `${win}dk \u00b7 <b>${hit.buys}</b> al\u0131m \u00b7 <b>${money(hit.usd)}</b>`,
-  ];
+  );
   if (handles.length) lines.push(`KOL ${esc(handles.join("  "))}`);
   lines.push(
     "",
