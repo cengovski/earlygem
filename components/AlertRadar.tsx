@@ -6,6 +6,7 @@ import { hydrateHit } from "@/lib/dexmeta";
 import { usd } from "@/lib/format";
 import { noteLocalHit } from "@/lib/hour-client";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
+import { logEvent } from "@/lib/log";
 import { bumpTokenViews } from "@/lib/tier";
 import type { ChainId, TapeFill } from "@/lib/types";
 import { DEFAULT_RULE, loadRule, type AlertRule } from "@/lib/watch";
@@ -130,6 +131,16 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
           html: true,
           keyboard: alertKeyboard(hit.chain, hit.token),
         });
+        if (!out.ok && !out.skipped) {
+          logEvent({
+            level: "error",
+            event: "telegram",
+            outcome: "error",
+            source: "telegram",
+            detail: out.error || "tg_fail",
+            url: "https://api.telegram.org/bot***/sendMessage",
+          });
+        }
         if (cancel) return;
         setStatus((prev) => ({
           ...prev,

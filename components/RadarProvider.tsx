@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { markFeeds } from "@/lib/health";
-import { recentLogs, type LogEvent } from "@/lib/log";
+import { installBrowserFaultHooks, logEvent, onLog, recentLogs, type LogEvent } from "@/lib/log";
 import { ingestPool, readPool } from "@/lib/pool";
 import { bustRadarCache, fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
@@ -75,6 +75,12 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    installBrowserFaultHooks();
+    setLogs(recentLogs(40));
+    return onLog(() => setLogs(recentLogs(40)));
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     started.current = Date.now();
     setLoading(true);
@@ -86,7 +92,15 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
         lastOk.current = Date.now();
         markFeeds(pooled.tape, next.traders);
       })
-      .catch(() => undefined)
+      .catch((err) => {
+        logEvent({
+          level: "error",
+          event: "radar",
+          outcome: "error",
+          kind: "connection",
+          detail: err instanceof Error ? err.message : "radar_fail",
+        });
+      })
       .finally(() => {
         if (!alive) return;
         setLogs(recentLogs(40));
@@ -102,6 +116,13 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     const watch = window.setInterval(() => {
       const now = Date.now();
       if (loading && now - started.current > HANG_MS) {
+        logEvent({
+          level: "error",
+          event: "radar",
+          outcome: "error",
+          kind: "timeout",
+          detail: `hang>${HANG_MS}ms`,
+        });
         setLoading(false);
         bump();
         return;

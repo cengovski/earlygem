@@ -1,4 +1,5 @@
 import { clientTelegram } from "./client-keys";
+import { logEvent, logHttpFailure } from "./log";
 import { WINDOW_MS } from "./window";
 
 const sent = new Map<string, number>();
@@ -62,7 +63,8 @@ export async function sendTelegram(
         writeLock(lock);
       }
       return { ok: true, skipped: false };
-    } catch {
+    } catch (err) {
+      logHttpFailure({ event: "telegram", source: "telegram", url: "https://api.telegram.org/bot***/sendMessage", err });
       return { ok: false, error: "tg_fail" };
     }
   }
@@ -70,25 +72,41 @@ export async function sendTelegram(
     const prev = sent.get(key) || 0;
     if (Date.now() - prev < WINDOW_MS) return { ok: true, skipped: true };
   }
-  const res = await fetch(`https://api.telegram.org/bot${token()}/sendMessage`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chat(),
-      text,
-      parse_mode: extra?.html ? "HTML" : undefined,
-      disable_web_page_preview: true,
-      reply_markup: extra?.keyboard,
-    }),
-    signal: AbortSignal.timeout(8_000),
-  });
-  const json = (await res.json().catch(() => null)) as { ok?: boolean } | null;
-  if (json?.ok && key) {
-    sent.set(key, Date.now());
-    if (sent.size > 80) {
-      const cutoff = Date.now() - WINDOW_MS;
-      for (const [k, ts] of sent) if (ts < cutoff) sent.delete(k);
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token()}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chat(),
+        text,
+        parse_mode: extra?.html ? "HTML" : undefined,
+        disable_web_page_preview: true,
+        reply_markup: extra?.keyboard,
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    const json = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+    if (!json?.ok) {
+      logEvent({
+        level: "error",
+        event: "telegram",
+        outcome: "denied",
+        source: "telegram",
+        status: res.status,
+        url: "https://api.telegram.org/bot***/sendMessage",
+        detail: "tg_api_fail",
+      });
     }
+    if (json?.ok && key) {
+      sent.set(key, Date.now());
+      if (sent.size > 80) {
+        const cutoff = Date.now() - WINDOW_MS;
+        for (const [k, ts] of sent) if (ts < cutoff) sent.delete(k);
+      }
+    }
+    return { ok: Boolean(json?.ok), skipped: false };
+  } catch (err) {
+    logHttpFailure({ event: "telegram", source: "telegram", url: "https://api.telegram.org/bot***/sendMessage", err });
+    return { ok: false, error: "tg_fail" };
   }
-  return { ok: Boolean(json?.ok), skipped: false };
 }

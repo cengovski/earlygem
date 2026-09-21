@@ -1,4 +1,5 @@
 import { clientGmgnKey } from "./client-keys";
+import { logHttpFailure } from "./log";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const HOST = "https://openapi.gmgn.ai";
@@ -71,15 +72,29 @@ async function gmgnGet(path: string, query: Record<string, string | number | und
   params.set("timestamp", String(Math.floor(Date.now() / 1000)));
   params.set("client_id", crypto.randomUUID());
   await gate();
-  const res = await fetch(`${HOST}${path}?${params.toString()}`, {
-    headers: { "X-APIKEY": key, Accept: "application/json" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8_000),
-  });
-  const json = (await res.json().catch(() => null)) as GmgnEnvelope | null;
-  if (res.status === 429 || json?.error === "RATE_LIMIT_EXCEEDED" || json?.error === "RATE_LIMIT_BANNED") return null;
-  if (!res.ok || !json) return null;
-  return json;
+  const url = `${HOST}${path}?${params.toString()}`;
+  const started = Date.now();
+  try {
+    const res = await fetch(url, {
+      headers: { "X-APIKEY": key, Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    const ms = Date.now() - started;
+    const json = (await res.json().catch(() => null)) as GmgnEnvelope | null;
+    if (res.status === 429 || json?.error === "RATE_LIMIT_EXCEEDED" || json?.error === "RATE_LIMIT_BANNED") {
+      logHttpFailure({ url, event: "gmgn", source: "gmgn", status: 429, ms, detail: json?.error || "rate_limit" });
+      return null;
+    }
+    if (!res.ok || !json) {
+      logHttpFailure({ url, event: "gmgn", source: "gmgn", status: res.status, ms, detail: json?.error || res.statusText });
+      return null;
+    }
+    return json;
+  } catch (err) {
+    logHttpFailure({ url, event: "gmgn", source: "gmgn", err, ms: Date.now() - started });
+    return null;
+  }
 }
 
 function num(v: string | number | null | undefined) {
