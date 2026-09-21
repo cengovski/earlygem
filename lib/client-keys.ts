@@ -12,6 +12,7 @@ export type ClientKeys = {
   telegramBot?: string;
   telegramChat?: string;
   goplus?: string;
+  goplusSecret?: string;
   honeypotis?: string;
 };
 

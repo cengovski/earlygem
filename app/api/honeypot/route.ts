@@ -15,6 +15,7 @@ export async function GET(req: Request) {
   }
   const scan = await scanHoneypotDirect(chain, token, {
     goplus: req.headers.get("x-eg-goplus") || "",
+    goplusSecret: req.headers.get("x-eg-goplus-secret") || "",
     honeypotis: req.headers.get("x-eg-honeypotis") || "",
   });
   return NextResponse.json(scan);

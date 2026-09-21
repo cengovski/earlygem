@@ -8,7 +8,7 @@ FOMO early gem radar. Tüm feed istekleri **tarayıcıdan / senin IP’nden** gi
 2. Radar her ~25 sn kaynakları tarayıcıdan çeker.
 3. Fill’ler **10 dakikalık havuza** yazılır (`eg_10m_pool`). Aynı tx / cüzdan+token+usd çakışmaları elenir.
 4. Tape bu havuzu basar.
-5. Eşik dolunca CA honeypot taramasından geçer (ücretsiz: GoPlus + Honeypot.is EVM, GoPlus + RugCheck Solana). Telegram’da 🟢 HONEYPOT PASSED veya 🔴 HONEYPOT. Key şart değil; istersen GoPlus / Honeypot.is key yaz.
+5. Eşik dolunca CA honeypot taramasından geçer (ücretsiz: GoPlus + Honeypot.is EVM, GoPlus + RugCheck Solana). Telegram’da 🟢 HONEYPOT PASSED veya 🔴 HONEYPOT. Key şart değil. GoPlus panosunda **APP Name yazılmaz**; `goplus` = APP Key, `goplusSecret` = APP Secret. Radar SHA-1 imza ile access token alır.
 6. Saatlik özet: DexScreener linki, token ilk düştüğündeki MC, son MC.
 
 ```bash
@@ -19,6 +19,16 @@ npm run dev
 Vercel: Next.js. Admin şifresi `ADMIN_PASSWORD`. Feed key’leri Vercel env değil, tarayıcı.
 
 Telegram çalışmıyorsa `/admin` → **telegram test**. Bot kanalda admin olmalı, chat id `-100…` grup/kanal id’si.
+
+## GoPlus format
+
+GoPlus panosundaki üç alan:
+
+- **APP Name** — yazma. Sadece senin etiketin, API kullanmaz.
+- **APP Key** — `/admin` → GoPlus APP Key, veya Termux `keys.json` içinde `"goplus"`.
+- **APP Secret** — `/admin` → GoPlus APP Secret, veya `"goplusSecret"`.
+
+İkisini ayrı yapıştır; tek kutuya `Name Key Secret` yazma. Radar `sha1(app_key + time + app_secret)` ile token alır, Token Security çağrılarına `Authorization: Bearer` koyar.
 
 ## Android (Chrome değil)
 
@@ -31,7 +41,7 @@ git clone https://github.com/cengovski/earlygem.git
 cd earlygem
 npm install
 cp keys.example.json keys.json
-# keys.json içine telegramBot, telegramChat ve feed key’lerini yaz
+# keys.json: telegramBot, telegramChat, goplus (APP Key), goplusSecret (APP Secret)
 termux-wake-lock
 npm run watch
 ```

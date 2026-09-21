@@ -125,16 +125,26 @@ export default function AdminPage() {
       >
         <p className="text-sm font-medium">Honeypot API</p>
         <p className="text-xs text-mute">
-          GoPlus panosundan App Key. Kullandığımız uçlar: Token Security API (EVM, 15 CU) ve Token Security API for Solana (30 CU). Sui, NFT, approval, phishing gerekmez. Honeypot.is key boş kalabilir (şimdilik ücretsiz).
+          GoPlus panosunda APP Name, APP Key, APP Secret görürsün. APP Name yazılmaz (sadece etiket). APP Key ve APP Secret’ı ayrı kutulara yapıştır. Radar SHA-1 imza ile access token alır. Kullandığımız uçlar: Token Security API (EVM, 15 CU) ve Token Security API for Solana (30 CU). Sui, NFT, approval, phishing gerekmez. Honeypot.is key boş kalabilir.
         </p>
         <label className="block text-sm">
-          GoPlus App Key
+          GoPlus APP Key
           <input
             className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs"
             type="password"
             value={keys.goplus || ""}
             onChange={(e) => setKeys({ ...keys, goplus: e.target.value })}
-            placeholder="Bearer veya app key"
+            placeholder="APP Key — APP Name değil"
+          />
+        </label>
+        <label className="block text-sm">
+          GoPlus APP Secret
+          <input
+            className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs"
+            type="password"
+            value={keys.goplusSecret || ""}
+            onChange={(e) => setKeys({ ...keys, goplusSecret: e.target.value })}
+            placeholder="APP Secret"
           />
         </label>
         <label className="block text-sm">
