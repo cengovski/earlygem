@@ -155,7 +155,7 @@ export default function AdminPage() {
       >
         <p className="text-sm font-medium">Nansen API</p>
         <p className="text-xs text-mute">
-          Resmi uç: POST /api/v1/smart-money/dex-trades · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / Fund · 5 kredi / istek (tek çağrı, tüm ağlar). Radar 24 saatte bir çeker; kredi bitince durur. Cüzdanlar kendi ağında GMGN takibine girer.
+          Resmi uç: POST /api/v1/smart-money/dex-trades · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / Fund · 5 kredi / istek (tek çağrı, tüm ağlar). Radar 24 saatte bir çeker; kredi bitince durur. Günlük çekim listeyi yeniler, aynı cüzdan (ağ+adres) bir kez durur — birikmez. Elle listedeki aynı adres de tek satır olur.
         </p>
         <label className="block text-sm">
           API key

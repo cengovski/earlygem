@@ -7,7 +7,7 @@ import { PULSE_WORKER } from "./pulse";
 import { classifyTrader } from "./smart";
 import { uniqueFills } from "./tape-key";
 import { pullNansenSmart } from "./nansen";
-import { watchTraders } from "./watchlist";
+import { mergeFollow, watchTraders } from "./watchlist";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const PUMP_USERS = "https://frontend-api-v3.pump.fun/users?offset=0&limit=25&sort=followers";
@@ -289,7 +289,7 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
     fetchExtraFeeds(),
     pullNansenSmart(),
   ]);
-  const watch = mergeTraders(watchTraders(), nansen.traders);
+  const watch = mergeFollow(watchTraders(), nansen.traders);
   const follow = await fetchGmgnWalletTape(mergeTraders(watch, gmgnParts.flatMap((p) => p.traders)));
   const fills = uniqueFills([
     ...gmgnParts.flatMap((p) => p.fills),
