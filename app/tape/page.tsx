@@ -15,13 +15,13 @@ function TapeInner() {
   const view = useSearchParams().get("view") || "all";
   return (
     <Shell title="Canlı tape" subtitle="20 dk tarayıcı havuzu. Çakışan fill’ler (tx / cüzdan+token+usd) elenir, eşik dolunca alarm çıkar.">
+      <GmgnConnect />
       <PulseGate>
         {(bundle) => {
           const sol = bundle.solTape || [];
           const rows = view === "sol" ? sol : view === "smart" ? bundle.smartTape : bundle.tape;
           return (
             <>
-              <GmgnConnect />
               <SourceBanner meta={bundle.meta} />
               <Kpis status={bundle.status} extra={[{ label: "satır", value: String(rows.length) }, { label: "SOL fill", value: String(sol.length) }]} />
               <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
