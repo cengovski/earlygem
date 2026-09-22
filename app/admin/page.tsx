@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { GmgnExportCard } from "@/components/GmgnExportCard";
+import { GmgnPemCard } from "@/components/GmgnPemCard";
 import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
 import { chainLabel, explorerWallet, shortAddr } from "@/lib/format";
 import { loadNansenCache, nansenChainCounts, pullNansenSmart, type NansenCache } from "@/lib/nansen";
@@ -106,18 +107,7 @@ export default function AdminPage() {
           GMGN VPS proxy URL
           <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="text" value={keys.gmgnProxy || ""} onChange={(e) => setKeys({ ...keys, gmgnProxy: e.target.value })} placeholder="boş = /api/gmgn · Termux: https://earlygem-live.vercel.app/api/gmgn" />
         </label>
-        <label className="block text-sm">
-          GMGN private key (follow Track)
-          <textarea
-            className="mt-1 h-24 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[11px]"
-            value={keys.gmgnPem || ""}
-            onChange={(e) => setKeys({ ...keys, gmgnPem: e.target.value })}
-            placeholder={"-----BEGIN PRIVATE KEY-----\nAPI key oluştururken indirdiğin Ed25519 PEM\n-----END PRIVATE KEY-----"}
-          />
-        </label>
-        <p className="text-[11px] text-mute">
-          gmgn.ai/follow sayfası CORS ve cookie yüzünden buradan çekilmez. Aynı Track akışı resmi <span className="font-mono">GET /v1/trade/follow_wallet</span> ile gelir; liste API key’in bağlı olduğu GMGN hesabındadır. Private key tarayıcıda kalır, Vercel’e gitmez — yalnız imza header’ı proxy’den geçer. PEM yoksa eski 8-cüzdan taraması devam eder.
-        </p>
+        <GmgnPemCard keys={keys} setKeys={setKeys} onHint={setMsg} />
         <label className="block text-sm">Binance key<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceKey || ""} onChange={(e) => setKeys({ ...keys, binanceKey: e.target.value })} /></label>
         <label className="block text-sm">Binance secret<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceSecret || ""} onChange={(e) => setKeys({ ...keys, binanceSecret: e.target.value })} /></label>
         <label className="block text-sm">FOMO API<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.fomo || ""} onChange={(e) => setKeys({ ...keys, fomo: e.target.value })} placeholder="fapi_..." /></label>

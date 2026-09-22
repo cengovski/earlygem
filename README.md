@@ -22,6 +22,16 @@ Nansen: resmi API. `/admin` → Nansen API key. `POST /api/v1/smart-money/dex-tr
 
 Telegram çalışmıyorsa `/admin` → **telegram test**. Bot kanalda admin olmalı, chat id `-100…` grup/kanal id’si.
 
+## GMGN public key / follow imzası
+
+`follow_wallet` imzalı auth ister. Çift, API key oluştururken GMGN’e yapıştırdığın public ile aynı olmalı.
+
+```bash
+npx gmgn-cli config
+```
+
+veya `/admin` → **Ed25519 üret**. Public PEM’i (BEGIN/END dahil) [gmgn.ai/ai](https://gmgn.ai/ai) formuna yapıştır. Dönen API key’i **GMGN key (PC)** kutusuna, private PEM’i **GMGN private key** kutusuna yaz. Private Vercel’e gitmez. API key geldikten sonra CLI: `npx gmgn-cli config --apply <API_KEY>`.
+
 ## GoPlus format
 
 GoPlus panosundaki üç alan:
