@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { GmgnExportCard } from "@/components/GmgnExportCard";
+import { followedWallets, gmgnExportJson } from "@/lib/gmgn-export";
 import { GmgnPemCard } from "@/components/GmgnPemCard";
 import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
 import { chainLabel, explorerWallet, shortAddr } from "@/lib/format";
@@ -168,12 +169,12 @@ export default function AdminPage() {
         onSubmit={(e) => {
           e.preventDefault();
           saveClientKeys(keys);
-          setMsg("Nansen key bu tarayıcıya yazıldı — kredi varsa günde 1 çekim");
+          setMsg("Nansen key bu tarayıcıya yazıldı — kredi varsa günde 1 çekim (2 sayfa, liste birikir)");
         }}
       >
         <p className="text-sm font-medium">Nansen API</p>
         <p className="text-xs text-mute">
-          Resmi uç: POST /api/v1/smart-money/dex-trades · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / Fund · 5 kredi / istek (tek çağrı, tüm ağlar). Radar 24 saatte bir çeker; kredi bitince durur. Günlük çekim listeyi yeniler, aynı cüzdan (ağ+adres) bir kez durur — birikmez. Elle listedeki aynı adres de tek satır olur. PEM yoksa GMGN wallet_activity turda 3 cüzdan (iki tick’te bir); PEM varsa follow_wallet.
+          Resmi uç: POST /api/v1/smart-money/dex-trades · son 24s · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / 30D / 90D / 180D / Fund · min $200 · 5 kredi / sayfa. Sayfa 1000 işlem. Günlük otomatik 2 sayfa, «şimdi çek» 3. Liste 21 gün birikir (tavan 2000, GMGN import tavanı). GMGN’e API ile cüzdan yazılmaz — JSON’u gmgn.ai/follow bulk import’a yapıştır; tape zaten o hesaptaki follow_wallet akışını okur.
         </p>
         <label className="block text-sm">
           API key
@@ -204,7 +205,21 @@ export default function AdminPage() {
               setNansenInfo(out.cache);
               setNansenBusy(false);
               if (out.cache?.error) setMsg(`nansen: ${out.cache.error}`);
-              else setMsg(`nansen: ${out.cache?.wallets.length || 0} cüzdan · ${nansenChainCounts(out.cache?.wallets || []) || "ağ yok"} · kredi ${out.cache?.creditsRemaining ?? "?"}`);
+              else {
+                const n = out.cache?.wallets.length || 0;
+                const added = out.cache?.added ?? 0;
+                const pages = out.cache?.pages ?? 1;
+                let copied = false;
+                try {
+                  await navigator.clipboard.writeText(gmgnExportJson(followedWallets(), { withChain: true }));
+                  copied = true;
+                } catch {
+                  copied = false;
+                }
+                setMsg(
+                  `nansen: ${n} cüzdan (+${added} yeni · ${pages} sayfa) · ${nansenChainCounts(out.cache?.wallets || []) || "ağ yok"} · kredi ${out.cache?.creditsRemaining ?? "?"}${copied ? " · GMGN JSON panoda, gmgn.ai/follow’a yapıştır" : " · aşağıdaki export’tan kopyala"}`,
+                );
+              }
             }}
           >
             {nansenBusy ? "çekiliyor…" : "şimdi çek"}
@@ -214,6 +229,8 @@ export default function AdminPage() {
           <div className="space-y-2">
             <p className="text-xs text-mute">
               son: {nansenInfo.wallets.length} cüzdan
+              {nansenInfo.added != null ? ` · +${nansenInfo.added} yeni` : ""}
+              {nansenInfo.pages ? ` · ${nansenInfo.pages} sayfa` : ""}
               {nansenChainCounts(nansenInfo.wallets) ? ` · ${nansenChainCounts(nansenInfo.wallets)}` : ""}
               {nansenInfo.creditsRemaining ? ` · kalan kredi ${nansenInfo.creditsRemaining}` : ""}
               {nansenInfo.at ? ` · ${new Date(nansenInfo.at).toLocaleString()}` : ""}
@@ -245,7 +262,7 @@ export default function AdminPage() {
                 </table>
               </div>
             ) : null}
-            <p className="text-[11px] text-mute">Kayıt: bu tarayıcı localStorage `eg_nansen_smart_v2`. Üstteki Solana takip kutusuna yazılmaz. Roster `/traders`, alımlar `/tape`.</p>
+            <p className="text-[11px] text-mute">Kayıt: bu tarayıcı localStorage `eg_nansen_smart_v2`. 21 gün birikir, 2000 tavan. Üstteki Solana kutusuna yazılmaz. GMGN’e otomatik eklenmez — export JSON’u follow sayfasına yapıştır.</p>
           </div>
         ) : (
           <p className="text-xs text-mute">henüz çekim yok — şimdi çek</p>
