@@ -6,6 +6,7 @@ import { logHttpFailure } from "./log";
 import { PULSE_WORKER } from "./pulse";
 import { classifyTrader } from "./smart";
 import { uniqueFills } from "./tape-key";
+import { pullNansenSmart } from "./nansen";
 import { watchTraders } from "./watchlist";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
@@ -281,17 +282,19 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
   for (const job of pair) {
     gmgnParts.push(await pullFeed(job.kind, job.chain, 30));
   }
-  const [pump, bn, fomo, extra] = await Promise.all([
+  const [pump, bn, fomo, extra, nansen] = await Promise.all([
     pullPumpRoster(),
     fetchBinanceFeeds(),
     fetchFomoAlerts(),
     fetchExtraFeeds(),
+    pullNansenSmart(),
   ]);
-  const watch = watchTraders();
+  const watch = mergeTraders(watchTraders(), nansen.traders);
   const follow = await fetchGmgnWalletTape(mergeTraders(watch, gmgnParts.flatMap((p) => p.traders)));
   const fills = uniqueFills([
     ...gmgnParts.flatMap((p) => p.fills),
     ...follow,
+    ...nansen.fills,
     ...bn.fills,
     ...fomo,
     ...extra.fills,

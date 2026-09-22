@@ -14,6 +14,7 @@ export type ClientKeys = {
   goplus?: string;
   goplusSecret?: string;
   honeypotis?: string;
+  nansen?: string;
   /** Newline/comma Solana wallets you pasted. Not scraped from Nansen. */
   watchSol?: string;
 };
@@ -52,6 +53,7 @@ export function clientExtraKeys() {
     soltrack: row.soltrack || process.env.SOLTRACK_KEY || "",
     madeonsol: row.madeonsol || process.env.MADEONSOL_KEY || "",
     bitquery: row.bitquery || process.env.BITQUERY_KEY || "",
+    nansen: row.nansen || process.env.NANSEN_API_KEY || "",
   };
 }
 

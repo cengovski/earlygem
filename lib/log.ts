@@ -59,6 +59,7 @@ export function sourceFromUrl(url?: string) {
   if (u.includes("solanatracker")) return "soltrack";
   if (u.includes("pump.fun")) return "pumpfun";
   if (u.includes("dexscreener")) return "dex";
+  if (u.includes("nansen")) return "nansen";
   if (u.includes("bitquery")) return "bitquery";
   if (u.includes("axiom")) return "axiom";
   return u.replace(/^https?:\/\//, "").split("/")[0]?.slice(0, 32);
@@ -234,6 +235,7 @@ function configuredList() {
     if (raw.soltrack) flags.push("soltrack");
     if (raw.madeonsol) flags.push("madeonsol");
     if (raw.bitquery) flags.push("bitquery");
+    if (raw.nansen) flags.push("nansen");
     if (raw.telegramBot && raw.telegramChat) flags.push("telegram");
     return flags;
   } catch {

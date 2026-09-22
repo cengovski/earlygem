@@ -44,6 +44,7 @@ function applyEnv(keys: KeyFile) {
   if (keys.goplus) process.env.GOPLUS_API_KEY = keys.goplus;
   if (keys.goplusSecret) process.env.GOPLUS_APP_SECRET = keys.goplusSecret;
   if (keys.honeypotis) process.env.HONEYPOTIS_API_KEY = keys.honeypotis;
+  if (keys.nansen) process.env.NANSEN_API_KEY = keys.nansen;
   if (keys.windowMin) process.env.ALERT_WINDOW_MIN = String(keys.windowMin);
   if (keys.minUsd) process.env.ALERT_MIN_USD = String(keys.minUsd);
   if (keys.minBuys) process.env.ALERT_MIN_BUYS = String(keys.minBuys);

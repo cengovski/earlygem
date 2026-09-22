@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
+import { loadNansenCache, pullNansenSmart, type NansenCache } from "@/lib/nansen";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 import { DEFAULT_RULE, loadRule, saveRule, type AlertRule } from "@/lib/watch";
 
@@ -12,10 +13,13 @@ export default function AdminPage() {
   const [rule, setRule] = useState<AlertRule>(DEFAULT_RULE);
   const [keys, setKeys] = useState<ClientKeys>({});
   const [msg, setMsg] = useState("");
+  const [nansenInfo, setNansenInfo] = useState<NansenCache | null>(null);
+  const [nansenBusy, setNansenBusy] = useState(false);
 
   useEffect(() => {
     setKeys(loadClientKeys());
     setRule(loadRule());
+    setNansenInfo(loadNansenCache());
     fetch("/api/admin/me")
       .then((r) => r.json())
       .then((row: { ok?: boolean }) => {
@@ -125,7 +129,7 @@ export default function AdminPage() {
       >
         <p className="text-sm font-medium">Solana takip listesi</p>
         <p className="text-xs text-mute">
-          Nansen Smart Money scrape edilmez (Cloudflare, giriş, ücretli API, ToS). Cüzdanları sen yapıştır; radar günde bir kez Nansen’e gitmez. Liste GMGN wallet_activity ile tur atar (tick’te birkaç cüzdan).
+          Elle yapıştırılan cüzdanlar. Nansen resmi API ayrı kartta; scrape yok. GMGN bu listeyi + Nansen çekimini turla takip eder.
         </p>
         <label className="block text-sm">
           cüzdanlar (satır / virgül)
@@ -139,6 +143,64 @@ export default function AdminPage() {
         <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">
           listeyi kaydet
         </button>
+      </form>
+      <form
+        className="mt-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveClientKeys(keys);
+          setMsg("Nansen key bu tarayıcıya yazıldı — kredi varsa günde 1 çekim");
+        }}
+      >
+        <p className="text-sm font-medium">Nansen API</p>
+        <p className="text-xs text-mute">
+          Resmi uç: POST /api/v1/smart-money/dex-trades · Solana · Smart Trader / Fund · 5 kredi / istek. Radar 24 saatte bir çeker; kredi bitince durur. Cüzdanlar GMGN takibine girer.
+        </p>
+        <label className="block text-sm">
+          API key
+          <input
+            className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs"
+            type="password"
+            value={keys.nansen || ""}
+            onChange={(e) => setKeys({ ...keys, nansen: e.target.value })}
+            placeholder="apikey header"
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">
+            nansen key kaydet
+          </button>
+          <button
+            className="rounded-md border border-line px-3 py-1 text-sm"
+            type="button"
+            disabled={nansenBusy}
+            onClick={async () => {
+              saveClientKeys(keys);
+              if (!keys.nansen) {
+                setMsg("önce Nansen API key yaz");
+                return;
+              }
+              setNansenBusy(true);
+              const out = await pullNansenSmart({ force: true });
+              setNansenInfo(out.cache);
+              setNansenBusy(false);
+              if (out.cache?.error) setMsg(`nansen: ${out.cache.error}`);
+              else setMsg(`nansen: ${out.cache?.wallets.length || 0} smart cüzdan · kredi ${out.cache?.creditsRemaining ?? "?"} · 5 kredi gitti`);
+            }}
+          >
+            {nansenBusy ? "çekiliyor…" : "şimdi çek"}
+          </button>
+        </div>
+        {nansenInfo ? (
+          <p className="text-xs text-mute">
+            son: {nansenInfo.wallets.length} cüzdan
+            {nansenInfo.creditsRemaining ? ` · kalan kredi ${nansenInfo.creditsRemaining}` : ""}
+            {nansenInfo.at ? ` · ${new Date(nansenInfo.at).toLocaleString()}` : ""}
+            {nansenInfo.error ? ` · ${nansenInfo.error}` : ""}
+          </p>
+        ) : (
+          <p className="text-xs text-mute">henüz çekim yok</p>
+        )}
       </form>
       <form
         className="mt-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
