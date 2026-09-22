@@ -1,3 +1,4 @@
+import { buyerSource, SRC_RANK } from "./alert-msg";
 import type { TapeFill } from "./types";
 
 function person(row: TapeFill) {
@@ -16,23 +17,47 @@ export function fillKey(row: TapeFill) {
   ].join(":");
 }
 
+function mergeFill(a: TapeFill, b: TapeFill): TapeFill {
+  const base = SRC_RANK[buyerSource(b)] > SRC_RANK[buyerSource(a)] ? b : a;
+  const other = base === a ? b : a;
+  return {
+    ...base,
+    flags: [...new Set([...a.flags, ...b.flags])],
+    usd: Math.max(a.usd || 0, b.usd || 0),
+    mcap: base.mcap || other.mcap,
+    liquidity: base.liquidity || other.liquidity,
+    change24: base.change24 ?? other.change24,
+    handle: base.handle || other.handle,
+    wallet: base.wallet || other.wallet,
+    name: base.name && base.name !== base.symbol ? base.name : other.name || base.name,
+  };
+}
+
 export function uniqueFills(rows: TapeFill[]) {
-  const seen = new Set<string>();
-  const people = new Set<string>();
-  const collide = new Set<string>();
+  const byKey = new Map<string, number>();
+  const byIdent = new Map<string, number>();
+  const byBump = new Map<string, number>();
   const out: TapeFill[] = [];
+  const index = (k: string, ident: string, bump: string, i: number) => {
+    byKey.set(k, i);
+    if (ident) byIdent.set(ident, i);
+    if (bump) byBump.set(bump, i);
+  };
   for (const row of rows) {
     const k = fillKey(row);
-    if (seen.has(k)) continue;
     const who = person(row);
     const ident = who ? `who:${who}:${row.token.toLowerCase()}:${row.side}:${Math.floor(row.ts / 30_000)}` : "";
-    if (ident && people.has(ident)) continue;
-    const bump = `${row.token.toLowerCase()}:${who}:${row.side}:${Math.round(row.usd / 5) * 5}:${Math.floor(row.ts / 45_000)}`;
-    if (who && collide.has(bump)) continue;
-    seen.add(k);
-    if (ident) people.add(ident);
-    if (who) collide.add(bump);
+    const bump = who
+      ? `${row.token.toLowerCase()}:${who}:${row.side}:${Math.round(row.usd / 5) * 5}:${Math.floor(row.ts / 45_000)}`
+      : "";
+    const hit = byKey.get(k) ?? (ident ? byIdent.get(ident) : undefined) ?? (bump ? byBump.get(bump) : undefined);
+    if (hit != null) {
+      out[hit] = mergeFill(out[hit], row);
+      index(k, ident, bump, hit);
+      continue;
+    }
     out.push(row);
+    index(k, ident, bump, out.length - 1);
   }
   return out;
 }
