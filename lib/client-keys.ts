@@ -14,6 +14,8 @@ export type ClientKeys = {
   goplus?: string;
   goplusSecret?: string;
   honeypotis?: string;
+  /** Newline/comma Solana wallets you pasted. Not scraped from Nansen. */
+  watchSol?: string;
 };
 
 const STORE = "eg_client_keys";

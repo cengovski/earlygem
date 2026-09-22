@@ -164,10 +164,9 @@ function fillFromActivity(row: GmgnActivity, trader: Trader): TapeFill | null {
 
 type Job = { chain: ChainId; wallet: string; trader: Trader };
 
+let watchCursor = 0;
+
 function planJobs(traders: Trader[]): Job[] {
-  const watched = traders.filter((t) => t.kind === "kol" || t.kind === "smart" || t.solana || t.address).slice(0, 4);
-  const extra = GMGN_FOMO_EVM[evmCursor % GMGN_FOMO_EVM.length];
-  evmCursor += 1;
   const jobs: Job[] = [];
   const seen = new Set<string>();
   const push = (job: Job) => {
@@ -176,8 +175,19 @@ function planJobs(traders: Trader[]): Job[] {
     seen.add(k);
     jobs.push(job);
   };
-  for (const trader of watched) {
-    if (trader.solana) push({ chain: "solana", wallet: trader.solana, trader });
+  const sol = traders.filter((t) => t.solana);
+  if (sol.length) {
+    const start = watchCursor % sol.length;
+    watchCursor += MAX_JOBS;
+    for (let i = 0; i < sol.length && jobs.length < MAX_JOBS; i++) {
+      const trader = sol[(start + i) % sol.length];
+      push({ chain: "solana", wallet: trader.solana as string, trader });
+    }
+  }
+  if (jobs.length >= MAX_JOBS) return jobs;
+  const extra = GMGN_FOMO_EVM[evmCursor % GMGN_FOMO_EVM.length];
+  evmCursor += 1;
+  for (const trader of traders) {
     if (trader.address) push({ chain: extra, wallet: trader.address, trader });
   }
   return jobs;
