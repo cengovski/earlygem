@@ -1,4 +1,4 @@
-import { alertKeyboard, alertMcapSkipReason, buyerSource, formatAlertHtml, isWrappedBase, rememberBuyer, type BuyerSrc } from "./alert-msg";
+import { alertKeyboard, alertMcapSkipReason, buyerSource, formatAlertHtml, isWrappedBase, mcapInAlertBand, rememberBuyer, skipAlertToken, type BuyerSrc } from "./alert-msg";
 import { attachHoneypot } from "./alert-honeypot";
 import { hydrateHit } from "./dexmeta";
 import { noteLocalHit } from "./hour-client";
@@ -48,6 +48,15 @@ export function onAlertStatus(fn: () => void) {
   };
 }
 
+let stickyNear: string[] = [];
+
+function nearScore(row: NearRow, rule: AlertRule) {
+  const handles = Math.min(row.handles.length / 2, 2);
+  const buys = row.buys / Math.max(rule.minBuys, 1);
+  const usdPart = Math.min(row.usd / Math.max(rule.minUsd, 1), 3) * 0.2;
+  return handles + buys + usdPart;
+}
+
 export function clusterNear(tape: TapeFill[], rule: AlertRule): NearRow[] {
   const since = Date.now() - rule.windowMin * 60_000;
   type Bag = NearRow & {
@@ -60,7 +69,7 @@ export function clusterNear(tape: TapeFill[], rule: AlertRule): NearRow[] {
   const bag = new Map<string, Bag>();
   for (const row of tape) {
     if (row.side !== "buy" || row.ts < since) continue;
-    if (isWrappedBase(row.token, row.symbol, row.name)) continue;
+    if (skipAlertToken(row) || isWrappedBase(row.token, row.symbol, row.name)) continue;
     const key = `${row.chain}:${row.token.toLowerCase()}`;
     const prev =
       bag.get(key) ||
@@ -104,14 +113,47 @@ export function clusterNear(tape: TapeFill[], rule: AlertRule): NearRow[] {
     if (h) prev.buyers = rememberBuyer(prev.buyers, h, buyerSource(row));
     bag.set(key, prev);
   }
-  return [...bag.values()]
-    .filter((row) => row.buys >= 2 || row.usd >= rule.minUsd * 0.35)
-    .sort((a, b) => b.usd / rule.minUsd + b.buys / rule.minBuys - (a.usd / rule.minUsd + a.buys / rule.minBuys))
-    .slice(0, 12);
+  const scored = [...bag.values()]
+    .filter((row) => row.handles.length >= 2 && row.buys >= 2)
+    .map((row) => ({ row, score: nearScore(row, rule) }))
+    .sort((a, b) => b.score - a.score || a.row.key.localeCompare(b.row.key));
+  const byKey = new Map(scored.map((s) => [s.row.key, s]));
+  const keep = stickyNear.filter((k) => byKey.has(k));
+  const incoming = scored.map((s) => s.row.key).filter((k) => !keep.includes(k));
+  const next: string[] = [];
+  for (const k of keep) {
+    if (next.length >= 12) break;
+    next.push(k);
+  }
+  for (const k of incoming) {
+    if (next.length < 12) {
+      next.push(k);
+      continue;
+    }
+    let worst = next[0];
+    for (const id of next) {
+      if ((byKey.get(id)?.score || 0) < (byKey.get(worst)?.score || 0)) worst = id;
+    }
+    if ((byKey.get(k)?.score || 0) > (byKey.get(worst)?.score || 0) + 0.4) {
+      next[next.indexOf(worst)] = k;
+    }
+  }
+  stickyNear = next;
+  return next.map((k) => {
+    const row = byKey.get(k)!.row;
+    const { seen: _s, firstTs: _f, lastTs: _l, firstMcapTs: _fm, lastMcapTs: _lm, ...rest } = row;
+    return rest;
+  });
 }
 
 function readyRows(rows: NearRow[], rule: AlertRule) {
-  return rows.filter((row) => row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2);
+  return rows.filter(
+    (row) =>
+      row.usd >= rule.minUsd &&
+      row.buys >= rule.minBuys &&
+      row.handles.length >= 2 &&
+      (row.mcapLast == null || row.mcapLast <= 0 || mcapInAlertBand(row.mcapLast)),
+  );
 }
 
 async function fireOne(row: NearRow, rule: AlertRule) {
