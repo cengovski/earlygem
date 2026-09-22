@@ -45,9 +45,19 @@ function withPool(bundle: RadarBundle & { meta: RadarMeta }, incoming: typeof bu
   return withTape(bundle, ingestPool(stamped, WINDOW_MIN));
 }
 
+let mcapBusy = false;
+let mcapAt = 0;
+
 async function refreshMcaps(tape: TapeFill[]) {
-  await runAlertPass(tape);
-  return writePool(await hydrateFills(readPool(WINDOW_MIN), 40));
+  if (mcapBusy || Date.now() - mcapAt < 12_000) return readPool(WINDOW_MIN);
+  mcapBusy = true;
+  try {
+    await runAlertPass(tape);
+    mcapAt = Date.now();
+    return writePool(await hydrateFills(readPool(WINDOW_MIN), 30));
+  } finally {
+    mcapBusy = false;
+  }
 }
 
 export function RadarProvider({ children }: { children: React.ReactNode }) {

@@ -12,7 +12,10 @@ export type DexMeta = {
 };
 
 const cache = new Map<string, { at: number; meta: DexMeta }>();
+const missUntil = new Map<string, number>();
 const TTL = 3 * 60_000;
+const MISS_MS = 2 * 60_000;
+let lastDexFault = 0;
 
 type Pair = {
   chainId?: string;
@@ -44,35 +47,65 @@ function pick(pairs: Pair[], token: string): DexMeta | null {
   };
 }
 
+function noteDexFault(url: string, detail: string, status?: number, err?: unknown) {
+  if (Date.now() - lastDexFault < 60_000) return;
+  lastDexFault = Date.now();
+  logHttpFailure({ url, event: "dex", source: "dex", status, detail, err });
+}
+
+async function fetchDexBatch(chain: ChainId, tokens: string[]) {
+  if (!tokens.length) return;
+  const url = `https://api.dexscreener.com/tokens/v1/${chain}/${tokens.join(",")}`;
+  const hold = (ms: number) => {
+    const until = Date.now() + ms;
+    for (const token of tokens) missUntil.set(key(chain, token), until);
+  };
+  try {
+    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) {
+      hold(res.status === 429 ? 3 * 60_000 : MISS_MS);
+      noteDexFault(url, `${tokens.length} token`, res.status);
+      return;
+    }
+    const pairs = (await res.json()) as Pair[];
+    const list = Array.isArray(pairs) ? pairs : [];
+    for (const token of tokens) {
+      const meta = pick(list, token);
+      if (meta) cache.set(key(chain, token), { at: Date.now(), meta });
+      else missUntil.set(key(chain, token), Date.now() + MISS_MS);
+    }
+  } catch (err) {
+    hold(MISS_MS);
+    noteDexFault(url, `${tokens.length} token`, undefined, err);
+  }
+}
+
+export async function warmDexMeta(pairs: { chain: ChainId; token: string }[], maxAgeMs = TTL) {
+  const by = new Map<ChainId, string[]>();
+  for (const row of pairs) {
+    if (!row.token) continue;
+    const k = key(row.chain, row.token);
+    const hit = cache.get(k);
+    if (hit && Date.now() - hit.at < maxAgeMs) continue;
+    if ((missUntil.get(k) || 0) > Date.now()) continue;
+    const list = by.get(row.chain) || [];
+    if (!list.includes(row.token)) list.push(row.token);
+    by.set(row.chain, list);
+  }
+  for (const [chain, tokens] of by) {
+    for (let i = 0; i < tokens.length; i += 30) {
+      await fetchDexBatch(chain, tokens.slice(i, i + 30));
+    }
+  }
+}
+
 export async function fetchDexMeta(chain: ChainId, token: string, maxAgeMs = TTL): Promise<DexMeta | null> {
   const k = key(chain, token);
   const hit = cache.get(k);
   if (hit && Date.now() - hit.at < maxAgeMs) return hit.meta;
-  try {
-    const res = await fetch(`https://api.dexscreener.com/tokens/v1/${chain}/${token}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(6_000),
-    });
-    if (!res.ok) {
-      if (res.status >= 500) {
-        logHttpFailure({
-          url: `https://api.dexscreener.com/tokens/v1/${chain}/${token}`,
-          event: "dex",
-          source: "dex",
-          status: res.status,
-          detail: res.statusText,
-        });
-      }
-      return null;
-    }
-    const pairs = (await res.json()) as Pair[];
-    const meta = Array.isArray(pairs) ? pick(pairs, token) : null;
-    if (meta) cache.set(k, { at: Date.now(), meta });
-    return meta;
-  } catch (err) {
-    logHttpFailure({ url: `https://api.dexscreener.com/tokens/v1/${chain}/${token}`, event: "dex", source: "dex", err });
-    return null;
-  }
+  if ((missUntil.get(k) || 0) > Date.now()) return null;
+  await fetchDexBatch(chain, [token]);
+  return cache.get(k)?.meta ?? null;
 }
 
 export async function hydrateHit(hit: AlertHit, maxAgeMs = ALERT_MCAP_TTL_MS): Promise<AlertHit> {
@@ -119,13 +152,6 @@ export async function hydrateFills(rows: TapeFill[], limit = 36, maxAgeMs = TTL)
     seen.add(k);
     unique.push(row);
   }
-  const jobs = unique
-    .filter((row) => {
-      const hit = cache.get(key(row.chain, row.token));
-      if (!hit) return true;
-      return Date.now() - hit.at >= maxAgeMs;
-    })
-    .slice(0, limit);
-  await Promise.all(jobs.map((row) => fetchDexMeta(row.chain, row.token, maxAgeMs)));
+  await warmDexMeta(unique.slice(0, limit), maxAgeMs);
   return overlayCachedDex(rows);
 }

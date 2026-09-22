@@ -145,16 +145,19 @@ async function hit(url: string, init: RequestInit, source: string) {
       return null;
     }
     if (!res.ok) {
-      const snippet = await res.text().catch(() => res.statusText);
+      const snippet = (await res.text().catch(() => res.statusText)).replace(/\s+/g, " ").slice(0, 160);
+      const credit = res.status === 403 && /credit/i.test(snippet);
+      if (credit) coolUntil.set(source, Date.now() + 6 * 60 * 60_000);
+      else if (res.status === 401 || res.status === 403) coolUntil.set(source, Date.now() + 30 * 60_000);
+      else if (res.status === 400) coolUntil.set(source, Date.now() + 60_000);
       logHttpFailure({
         url,
         event: source,
         source,
         status: res.status,
         ms,
-        detail: snippet.replace(/\s+/g, " ").slice(0, 160) || res.statusText,
+        detail: credit ? `${snippet} · 6s bekle` : snippet || res.statusText,
       });
-      if (res.status === 400) coolUntil.set(`${source}:${url}`, Date.now() + 60_000);
       return null;
     }
     return res;
