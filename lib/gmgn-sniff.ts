@@ -112,7 +112,7 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     for (var i = 0; i < (bag.trades || []).length; i++) {
       if (bag.trades[i].side === "buy") buys.push(bag.trades[i]);
     }
-    return { type: "eg-gmgn-track", fills: buys.slice(0, 80) };
+    return { type: "eg-gmgn-track", fills: buys.slice(0, 20) };
   }
 
   function copyBuys() {
@@ -162,23 +162,36 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     return sent;
   }
 
-  function relay(buys) {
-    if (!buys || !buys.length) return;
-    var body = JSON.stringify({ type: "eg-gmgn-track", fills: buys });
-    var urls = [EG + "/api/gmgn-ingest", "http://127.0.0.1:43147/api/gmgn-ingest"];
-    for (var i = 0; i < urls.length; i++) {
-      fetch(urls[i], {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: body,
-        mode: "cors",
-        keepalive: true,
-      })
-        .then(function (r) {
-          if (!r.ok) return;
-          bag.relayed = (bag.relayed || 0) + 1;
-        })
-        .catch(function () {});
+  function formRelay(buys) {
+    if (!buys || !buys.length || bag.formBlocked) return;
+    if (!window.__egCspHook) {
+      window.__egCspHook = true;
+      document.addEventListener("securitypolicyviolation", function (ev) {
+        var d = String(ev.effectiveDirective || ev.violatedDirective || "");
+        if (d.indexOf("form-action") >= 0) bag.formBlocked = true;
+      });
+    }
+    var form = document.getElementById("eg-relay-form");
+    if (!form) {
+      form = document.createElement("form");
+      form.id = "eg-relay-form";
+      form.method = "POST";
+      form.action = EG + "/api/gmgn-ingest";
+      form.target = "eg_gmgn_relay";
+      form.enctype = "application/x-www-form-urlencoded";
+      form.setAttribute("hidden", "");
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "payload";
+      form.appendChild(input);
+      document.body.appendChild(form);
+    }
+    form.querySelector("input").value = JSON.stringify({ type: "eg-gmgn-track", fills: buys.slice(0, 20) });
+    try {
+      form.submit();
+      bag.relayed = (bag.relayed || 0) + 1;
+    } catch (e) {
+      bag.formBlocked = true;
     }
   }
 
@@ -209,16 +222,18 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     if (!buys.length) return;
     postEg({ type: "eg-gmgn-track", fills: buys });
     setTimeout(function () {
-      relay(buys);
+      formRelay(buys);
       var now = Date.now();
-      if (!bag.copyAt || now - bag.copyAt > 4000) {
+      if (!bag.copyAt || now - bag.copyAt > 2000) {
         copyBuys();
         bag.copyAt = now;
       }
     }, 0);
     const hint = bag.acked != null
       ? "radar OK " + bag.acked
-      : "relay " + buys.length + " buy · radar 2sn";
+      : bag.formBlocked
+        ? "CSP · JSON panoda · earlygem tıkla"
+        : "pano · earlygem tıkla";
     const line =
       "[eg] TRACK fill " +
       fresh.length +
@@ -345,11 +360,11 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
   }
 
   function attachFollow(ws, url) {
-    if (!ws || ws.__egFollow53) return;
-    ws.__egFollow53 = true;
+    if (!ws || ws.__egFollow54) return;
+    ws.__egFollow54 = true;
     const u = shortUrl(url || ws.url || "");
     if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
-    console.log("[eg] v5.3 follow attach", u || "ws");
+    console.log("[eg] v5.4 follow attach", u || "ws");
     try {
       ws.addEventListener("message", function (ev) {
         ingestWs(ev.data);
@@ -359,8 +374,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
 
   const OWS = window.WebSocket;
   const pSend = OWS.prototype.send;
-  if (!window.__egGmgnHookedV53) {
-    window.__egGmgnHookedV53 = true;
+  if (!window.__egGmgnHookedV54) {
+    window.__egGmgnHookedV54 = true;
     OWS.prototype.send = function (data) {
       attachFollow(this, this.url);
       return pSend.call(this, data);
@@ -442,8 +457,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     return json;
   };
 
-  banner("v5.3 takildi — Track YENILEME. Buy relay radar'a; sell yok.");
-  console.log("[eg] v5.3 takildi — YENILEME. buy fill → /api/gmgn-ingest");
-  return "[eg] v5.3 — Track yenileme, buy relay, radar 2sn";
+  banner("v5.4 takildi — Track YENILEME. fetch yok (CSP). Buy JSON panoda; earlygem tıkla.");
+  console.log("[eg] v5.4 takildi — YENİLEME. connect-src fetch yok, pano + form");
+  return "[eg] v5.4 — Track yenileme, fetch yok, earlygem tıkla";
 })();
 `;
