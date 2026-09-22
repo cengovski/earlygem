@@ -1,18 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { ingestGmgnTrackPayload } from "@/lib/gmgn-bridge";
+import { ingestGmgnPaste } from "@/lib/gmgn-bridge";
 
 export function GmgnTrackIngestBar() {
   const [hint, setHint] = useState("");
   const [open, setOpen] = useState(false);
   const [paste, setPaste] = useState("");
 
-  function ingest(raw: string, emptyMsg: string) {
-    const n = ingestGmgnTrackPayload(raw);
-    setHint(n ? `${n} buy 20dk havuza yazıldı` : emptyMsg);
-    if (n) setPaste("");
-    return n;
+  function ingest(raw: string) {
+    const out = ingestGmgnPaste(raw);
+    setHint(out.hint);
+    if (out.buys) setPaste("");
+    return out.buys;
   }
 
   return (
@@ -24,7 +24,7 @@ export function GmgnTrackIngestBar() {
         onClick={async () => {
           try {
             const text = await navigator.clipboard.readText();
-            const n = ingest(text, "panoda buy yok — gmgn sarı kutu JSON bekleniyor");
+            const n = ingest(text);
             if (!n) setOpen(true);
           } catch {
             setOpen(true);
@@ -50,14 +50,14 @@ export function GmgnTrackIngestBar() {
             onChange={(e) => setPaste(e.target.value)}
             onPaste={(e) => {
               const text = e.clipboardData.getData("text");
-              if (text && ingest(text, "JSON’da buy yok")) e.preventDefault();
+              if (text && ingest(text)) e.preventDefault();
             }}
             placeholder='{"type":"eg-gmgn-track","fills":[...]} veya dump JSON'
           />
           <button
             type="button"
             className="rounded-md bg-accent px-2 py-1 text-[#16140c]"
-            onClick={() => ingest(paste, "JSON’da buy yok — dump’ta fills/trades bak")}
+            onClick={() => ingest(paste)}
           >
             havuza yaz
           </button>

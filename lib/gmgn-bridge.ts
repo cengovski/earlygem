@@ -85,6 +85,31 @@ function asFill(row: Record<string, unknown>): TapeFill | null {
   };
 }
 
+export function isGmgnOverlayPaste(raw: string) {
+  return /__egGmgnHooked|__egFollow\d|function asFollowTrade|function formRelay|function pageCopy|v5\.\d overlay/.test(raw);
+}
+
+export function ingestGmgnPaste(raw: unknown): { buys: number; hint: string } {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (text && isGmgnOverlayPaste(text)) {
+    return {
+      buys: 0,
+      hint: "Bu F12 overlay — gmgn Track console’a yapıştır (YENİLEME). Bu kutu buy JSON: sarı kutu veya __egGmgn.dump()",
+    };
+  }
+  let payload: unknown = raw;
+  if (text) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start && (start > 0 || end < text.length - 1)) {
+      payload = text.slice(start, end + 1);
+    }
+  }
+  const n = ingestGmgnTrackPayload(payload);
+  if (n) return { buys: n, hint: `${n} buy 20dk havuza yazıldı` };
+  return { buys: 0, hint: "JSON değil — {\"type\":\"eg-gmgn-track\",\"fills\":[...]} veya dump yapıştır" };
+}
+
 export function ingestGmgnTrackPayload(raw: unknown) {
   const rows = parseGmgnTrackFills(raw);
   const fills = rows.map((r) => asFill(r)).filter(Boolean) as TapeFill[];
@@ -115,6 +140,7 @@ export async function ingestGmgnClipboard() {
   lastClipAt = now;
   try {
     const text = await navigator.clipboard.readText();
+    if (isGmgnOverlayPaste(text)) return 0;
     if (!/eg-gmgn-track|"follow"/.test(text)) return 0;
     return ingestGmgnTrackPayload(text);
   } catch {

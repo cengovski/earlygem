@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { GMGN_SNIFF_JS } from "@/lib/gmgn-sniff";
-import { ingestGmgnTrackPayload } from "@/lib/gmgn-bridge";
+import { ingestGmgnPaste } from "@/lib/gmgn-bridge";
 
 export function GmgnSniffCard() {
   const [hint, setHint] = useState("");
@@ -43,20 +43,19 @@ export function GmgnSniffCard() {
       </div>
       <textarea className="h-28 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[10px]" readOnly value={GMGN_SNIFF_JS} />
       <p className="text-[11px] text-mute">
-        Sarı kutu TRACK buy + pano yazar. Earlygem’e geç tıkla. Elle dump: <span className="font-mono">__egGmgn.dump()</span>
+        Üst kutu F12 kodu — yalnız gmgn console. Alt kutu buy dump JSON. Overlay’i buraya yapıştırma.
       </p>
       <textarea
         className="h-20 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[10px]"
         value={paste}
         onChange={(e) => setPaste(e.target.value)}
-        placeholder='{"type":"eg-gmgn-track","fills":[...]} veya dump JSON'
+        placeholder='buy dump: {"type":"eg-gmgn-track","fills":[...]}  — overlay değil'
       />
       <button
         type="button"
         className="rounded-md border border-line px-3 py-1 text-sm"
         onClick={() => {
-          const n = ingestGmgnTrackPayload(paste);
-          setHint(n ? `${n} buy havuza yazıldı` : "buy yok — dump’ta fills/trades bak");
+          setHint(ingestGmgnPaste(paste).hint);
         }}
       >
         JSON’u havuza yaz
