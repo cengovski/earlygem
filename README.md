@@ -18,7 +18,7 @@ npm run dev
 
 Vercel: Next.js. Admin şifresi `ADMIN_PASSWORD`. Feed key’leri Vercel env değil, tarayıcı.
 
-Nansen Smart Money (`app.nansen.ai`) çekilmez. Cloudflare + giriş + ücretli API; ToS tarama yasak. Kendi Solana cüzdan listeni `/admin` veya `keys.json` `watchSol` içine yapıştır; GMGN o cüzdanları turla takip eder.
+Nansen: resmi API. `/admin` → Nansen API key. `POST /api/v1/smart-money/dex-trades` Solana Smart Trader/Fund, **5 kredi / çekim**, en fazla günde 1. Kredi bitince durur (`insufficient_credits`). Çekilen cüzdanlar GMGN `wallet_activity` ile takip edilir. Elle liste `watchSol` hâlâ durur. App sayfası scrape edilmez.
 
 Telegram çalışmıyorsa `/admin` → **telegram test**. Bot kanalda admin olmalı, chat id `-100…` grup/kanal id’si.
 
