@@ -63,7 +63,8 @@ function sourcesFromTags(tags: string[]) {
   if (tags.includes("axiom")) out.add("axiom");
   if (tags.includes("gmgn") || tags.includes("gmgn_go")) out.add("gmgn");
   if (tags.includes("binance") || tags.includes("binance_wallet")) out.add("binance");
-  if (tags.includes("launchpad_smart")) out.add("pumpfun");
+  if (tags.includes("nansen")) out.add("nansen");
+  if (tags.includes("launchpad_smart") || tags.includes("pumpfun") || tags.includes("pump")) out.add("pumpfun");
   return [...out];
 }
 

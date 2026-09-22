@@ -37,7 +37,9 @@ function fillOf(row: {
   wallet?: string | null;
   tx?: string | null;
   source: string;
+  kind?: "kol" | "smart";
 }): TapeFill {
+  const kind = row.kind || "smart";
   return {
     id: `${row.source}-${row.tx || row.token}-${row.ts}`,
     ts: row.ts,
@@ -61,13 +63,13 @@ function fillOf(row: {
     rank: null,
     tx: row.tx || null,
     firstBuy: false,
-    flags: [row.source],
+    flags: [row.source, kind],
     source: "dexscreener",
-    smartKind: "kol",
+    smartKind: kind,
   };
 }
 
-function traderOf(handle: string, wallet: string | null, chain: ChainId, src: string): Trader {
+function traderOf(handle: string, wallet: string | null, chain: ChainId, src: string, kind?: "kol" | "smart"): Trader {
   const tagged = classifyTrader({
     handle,
     followers: 0,
@@ -99,7 +101,7 @@ function traderOf(handle: string, wallet: string | null, chain: ChainId, src: st
     openTokens: 0,
     rank: null,
     lastTs: Date.now(),
-    kind: tagged.kind === "noise" ? "smart" : tagged.kind,
+    kind: kind || (tagged.kind === "noise" ? "smart" : tagged.kind),
     smartScore: 60,
     smartReasons: [`src:${src}`, `src:extra:${chain}`],
   };
@@ -197,9 +199,10 @@ async function pullCabal(key: string) {
         wallet,
         tx: String(row.tx || row.tx_hash || row.signature || "") || null,
         source: "cabalspy",
+        kind: job.type === "smart" ? "smart" : "kol",
       }),
     );
-    traders.push(traderOf(handle, wallet, chain, "cabalspy"));
+    traders.push(traderOf(handle, wallet, chain, "cabalspy", job.type === "smart" ? "smart" : "kol"));
   }
   markSource("cabalspy", fills.length > 0, fills.length);
   return { fills, traders };
@@ -244,9 +247,10 @@ async function pullMadeOnSol(key: string) {
         wallet: String(row.wallet || "") || null,
         tx: String(row.tx || row.signature || "") || null,
         source: "madeonsol",
+        kind: "kol",
       }),
     );
-    traders.push(traderOf(handle, String(row.wallet || "") || null, chain, "madeonsol"));
+    traders.push(traderOf(handle, String(row.wallet || "") || null, chain, "madeonsol", "kol"));
   }
   markSource("madeonsol", fills.length > 0, fills.length);
   madeOnStore = { at: Date.now(), fills, traders };
@@ -285,9 +289,10 @@ async function pullSolTrack(key: string) {
         wallet: String(row.wallet || "") || null,
         tx: String(row.tx || row.signature || "") || null,
         source: "soltrack",
+        kind: "smart",
       }),
     );
-    traders.push(traderOf(handle, String(row.wallet || "") || null, "solana", "soltrack"));
+    traders.push(traderOf(handle, String(row.wallet || "") || null, "solana", "soltrack", "smart"));
   }
   markSource("soltrack", fills.length > 0, fills.length);
   return { fills, traders };

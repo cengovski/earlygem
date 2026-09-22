@@ -163,7 +163,7 @@ export function formatHourDigest(pack: HourBook) {
     if (tier) lines.push(tier);
     lines.push(
       `<code>${esc(row.token)}</code>`,
-      `${row.buys} alım \u00b7 ${usd} \u00b7 ${row.kols.length} KOL \u00b7 eşik ${row.crosses}x`,
+      `${row.buys} alım \u00b7 ${usd} \u00b7 ${row.kols.length} cüzdan \u00b7 eşik ${row.crosses}x`,
       `MC ilk ${money(row.mcapFirst)} \u00b7 son ${money(row.mcapLast)}`,
       `<a href="${links.dex}">DexScreener</a>`,
       "",

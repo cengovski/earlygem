@@ -44,6 +44,7 @@ export async function POST(req: Request) {
     liquidity: body?.liquidity ?? null,
     change24: body?.change24 ?? null,
     handles: body?.handles || [],
+    buyers: body?.buyers,
   });
   if (!mcapInAlertBand(hit.mcap)) {
     return NextResponse.json({ ok: true, skipped: true, reason: "mcap_band" });

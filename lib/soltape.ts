@@ -1,3 +1,4 @@
+import { traderSourceFlags } from "./alert-msg";
 import { scoreGem } from "./score";
 import { isWatchedKind } from "./smart";
 import type { Gem, GemBuyer, SmartKind, TapeFill, Trader } from "./types";
@@ -99,7 +100,7 @@ export async function fetchSolTape(traders: Trader[]): Promise<TapeFill[]> {
           rank: trader.rank,
           tx: sig.signature,
           firstBuy: false,
-          flags: [trader.kind],
+          flags: ["sol", ...traderSourceFlags(trader)],
           source: "dexscreener",
           smartKind: trader.kind,
         });

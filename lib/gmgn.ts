@@ -1,3 +1,4 @@
+import { traderSourceFlags } from "./alert-msg";
 import { clientGmgnKey } from "./client-keys";
 import { logHttpFailure } from "./log";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
@@ -156,7 +157,7 @@ function fillFromActivity(row: GmgnActivity, trader: Trader): TapeFill | null {
     rank: trader.rank,
     tx: row.tx_hash || null,
     firstBuy: false,
-    flags: [trader.kind, "gmgn"],
+    flags: ["gmgn", ...traderSourceFlags(trader)],
     source: "dexscreener",
     smartKind: trader.kind as SmartKind,
   };

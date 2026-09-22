@@ -8,7 +8,7 @@ FOMO early gem radar. Tüm feed istekleri **tarayıcıdan / senin IP’nden** gi
 2. Radar her ~25 sn kaynakları tarayıcıdan çeker. GMGN, Opera/Cloudflare tarayıcıdan `Failed to fetch` verdiği için `/api/gmgn` üzerinden gider; key hâlâ tarayıcıda.
 3. Fill’ler **10 dakikalık havuza** yazılır (`eg_10m_pool`). Aynı tx / cüzdan+token+usd çakışmaları elenir.
 4. Tape bu havuzu basar.
-5. Eşik dolunca CA honeypot taramasından geçer (ücretsiz: GoPlus + Honeypot.is EVM, GoPlus + RugCheck Solana). Telegram’da 🟢 HONEYPOT PASSED veya 🔴 HONEYPOT. Key şart değil. GoPlus panosunda **APP Name yazılmaz**; `goplus` = APP Key, `goplusSecret` = APP Secret. Radar SHA-1 imza ile access token alır.
+5. Eşik dolunca CA honeypot taramasından geçer (ücretsiz: GoPlus + Honeypot.is EVM, GoPlus + RugCheck Solana). Telegram’da 🟢 HONEYPOT PASSED veya 🔴 HONEYPOT. Key şart değil. GoPlus panosunda **APP Name yazılmaz**; `goplus` = APP Key, `goplusSecret` = APP Secret. Radar SHA-1 imza ile access token alır. Alıcı satırları kaynağa göre ayrılır: `KOL` / `SMART` / `NANSEN` / `BINANCE` / `PUMP` / `AXIOM`.
 6. Saatlik özet: DexScreener linki, token ilk düştüğündeki MC, son MC.
 
 ```bash

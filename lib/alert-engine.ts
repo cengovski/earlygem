@@ -1,4 +1,4 @@
-import { alertKeyboard, alertMcapSkipReason, formatAlertHtml, isWrappedBase } from "./alert-msg";
+import { alertKeyboard, alertMcapSkipReason, buyerSource, formatAlertHtml, isWrappedBase, rememberBuyer, type BuyerSrc } from "./alert-msg";
 import { attachHoneypot } from "./alert-honeypot";
 import { hydrateHit } from "./dexmeta";
 import { noteLocalHit } from "./hour-client";
@@ -17,6 +17,7 @@ export type NearRow = {
   usd: number;
   buys: number;
   handles: string[];
+  buyers: Array<{ handle: string; src: BuyerSrc }>;
   mcapFirst: number | null;
   mcapLast: number | null;
 };
@@ -71,6 +72,7 @@ export function clusterNear(tape: TapeFill[], rule: AlertRule): NearRow[] {
         usd: 0,
         buys: 0,
         handles: [],
+        buyers: [],
         mcapFirst: null,
         mcapLast: null,
         firstTs: row.ts,
@@ -99,6 +101,7 @@ export function clusterNear(tape: TapeFill[], rule: AlertRule): NearRow[] {
       prev.seen.add(h.toLowerCase());
       prev.handles.push(h);
     }
+    if (h) prev.buyers = rememberBuyer(prev.buyers, h, buyerSource(row));
     bag.set(key, prev);
   }
   return [...bag.values()]
@@ -130,6 +133,7 @@ async function fireOne(row: NearRow, rule: AlertRule) {
       buys: row.buys,
       windowMin: rule.windowMin,
       handles: row.handles,
+      buyers: row.buyers,
       views: tier.views,
       mcap: row.mcapLast,
     });
