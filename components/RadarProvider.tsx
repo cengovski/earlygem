@@ -4,10 +4,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { attachRosterFlags } from "@/lib/alert-msg";
 import { markFeeds } from "@/lib/health";
 import { installBrowserFaultHooks, logEvent, onLog, recentLogs, type LogEvent } from "@/lib/log";
-import { ingestPool, readPool } from "@/lib/pool";
+import { hydrateFills } from "@/lib/dexmeta";
+import { ingestPool, readPool, writePool } from "@/lib/pool";
 import { bustRadarCache, fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
 import { runAlertPass } from "@/lib/alert-engine";
+import type { TapeFill } from "@/lib/types";
 import { maybeFlushHourDigest } from "@/lib/hour-client";
 import { WINDOW_MIN } from "@/lib/window";
 
@@ -31,12 +33,20 @@ const EMPTY: RadarState = {
 
 const Ctx = createContext<RadarState>(EMPTY);
 
-function withPool(bundle: RadarBundle & { meta: RadarMeta }, incoming: typeof bundle.tape) {
-  const stamped = attachRosterFlags([...(incoming || []), ...(bundle.solTape || [])], bundle.traders || []);
-  const tape = ingestPool(stamped, WINDOW_MIN);
+function withTape<T extends RadarBundle & { meta: RadarMeta }>(bundle: T, tape: TapeFill[]) {
   const solTape = tape.filter((row) => row.chain === "solana");
   const smartTape = tape.filter((r) => r.smartKind === "kol" || r.smartKind === "smart").slice(0, 80);
   return { ...bundle, tape, solTape, smartTape };
+}
+
+function withPool(bundle: RadarBundle & { meta: RadarMeta }, incoming: typeof bundle.tape) {
+  const stamped = attachRosterFlags([...(incoming || []), ...(bundle.solTape || [])], bundle.traders || []);
+  return withTape(bundle, ingestPool(stamped, WINDOW_MIN));
+}
+
+async function refreshMcaps(tape: TapeFill[]) {
+  await runAlertPass(tape);
+  return writePool(await hydrateFills(readPool(WINDOW_MIN), 40));
 }
 
 export function RadarProvider({ children }: { children: React.ReactNode }) {
@@ -76,7 +86,9 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
       },
     });
     setLoading(false);
-    void runAlertPass(cached);
+    void refreshMcaps(cached).then((tape) => {
+      setBundle((prev) => (prev ? withTape(prev, tape) : prev));
+    });
   }, []);
 
   useEffect(() => {
@@ -96,7 +108,10 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
         setBundle(pooled);
         lastOk.current = Date.now();
         markFeeds(pooled.tape, next.traders);
-        void runAlertPass(pooled.tape);
+        void refreshMcaps(pooled.tape).then((tape) => {
+          if (!alive) return;
+          setBundle((prev) => (prev ? withTape(prev, tape) : prev));
+        });
       })
       .catch((err) => {
         logEvent({
@@ -144,7 +159,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     }, 30_000);
     const onKeys = () => {
       const tape = readPool(WINDOW_MIN);
-      if (tape.length) void runAlertPass(tape);
+      if (tape.length) void refreshMcaps(tape).then((next) => setBundle((prev) => (prev ? withTape(prev, next) : prev)));
     };
     window.addEventListener("eg-keys", onKeys);
     window.addEventListener("storage", onKeys);

@@ -66,6 +66,30 @@ export function alertMcapSkipReason(mcap: number | null | undefined) {
   return null;
 }
 
+const QUOTE_NAME = new Set(
+  [
+    "JUP", "HYPE", "FWOG", "GIGA", "BONK", "PENGU", "TRUMP", "MUSE", "NEET", "SPCX",
+    "FEELSGOOD", "MSFTX", "GOOGLX", "AAPLX", "TSLAX", "NVDX", "NVDAB",
+  ].map((s) => s.toUpperCase()),
+);
+
+export function isQuoteLabel(raw?: string) {
+  const s = (raw || "").replace(/^\$/, "").trim().toUpperCase();
+  if (!s) return false;
+  if (WRAPPED_SYM.has(s) || QUOTE_NAME.has(s) || JUNK_SYM.test(s) || XSTOCK.test(s)) return true;
+  if (/^W(SOL|ETH|BNB|BTC|MON|AVAX|MATIC|FTM|SUI|BERA)$/.test(s)) return true;
+  return false;
+}
+
+export function scrubFillLabels<T extends { symbol: string; name: string }>(row: T): T {
+  const symbol = (row.symbol || "").replace(/^\$/, "").trim() || row.symbol;
+  const name = (row.name || "").replace(/^\$/, "").trim();
+  if (name && symbol && name.toUpperCase() !== symbol.toUpperCase() && isQuoteLabel(name) && !isQuoteLabel(symbol)) {
+    return { ...row, symbol, name: symbol };
+  }
+  return symbol === row.symbol ? row : { ...row, symbol };
+}
+
 export function isWrappedBase(token: string, symbol?: string, name?: string) {
   const addr = token.trim().toLowerCase();
   if (WRAPPED_ADDR.has(addr)) return true;

@@ -1,3 +1,5 @@
+import { scrubFillLabels } from "./alert-msg";
+import { overlayCachedDex } from "./dexmeta";
 import { persistGet, persistSet } from "./persist";
 import { uniqueFills } from "./tape-key";
 import type { TapeFill } from "./types";
@@ -25,10 +27,12 @@ function save(fills: TapeFill[]) {
 
 function prune(rows: TapeFill[], windowMin = WINDOW_MIN) {
   const since = Date.now() - windowMin * 60_000;
-  return uniqueFills(rows)
-    .filter((row) => row.side === "buy" && row.ts >= since)
-    .sort((a, b) => b.ts - a.ts)
-    .slice(0, MAX);
+  return overlayCachedDex(
+    uniqueFills(rows.map(scrubFillLabels))
+      .filter((row) => row.side === "buy" && row.ts >= since)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, MAX),
+  );
 }
 
 /** Merge incoming fills into the 20-minute browser pool, drop collisions, persist. */
@@ -40,6 +44,12 @@ export function ingestPool(incoming: TapeFill[], windowMin = WINDOW_MIN) {
 
 export function readPool(windowMin = WINDOW_MIN) {
   return prune(load(), windowMin);
+}
+
+export function writePool(fills: TapeFill[], windowMin = WINDOW_MIN) {
+  const next = prune(fills, windowMin);
+  save(next);
+  return next;
 }
 
 export function clearPool() {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatBuyerLines, MAX_ALERT_MCAP } from "@/lib/alert-msg";
-import { usd } from "@/lib/format";
+import { shortAddr, usd } from "@/lib/format";
 import { alertStatus, clusterNear, loadAlertRule, onAlertStatus } from "@/lib/alert-engine";
 import { telegramConfigured } from "@/lib/telegram";
 import type { TapeFill } from "@/lib/types";
@@ -36,6 +36,14 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
   }, []);
 
   const rows = useMemo(() => clusterNear(tape, rule), [tape, rule]);
+  const dup = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const row of rows) {
+      const k = `${row.chain}:${row.symbol.toLowerCase()}`;
+      n.set(k, (n.get(k) || 0) + 1);
+    }
+    return n;
+  }, [rows]);
 
   return (
     <aside className="w-full shrink-0 rounded-xl border border-line bg-surface lg:w-72">
@@ -58,11 +66,14 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
                 <div className="flex items-baseline justify-between gap-2">
                   <a className="truncate font-medium hover:text-accent" href={`/token/${row.chain}/${row.token}`}>
                     ${row.symbol}
+                    {(dup.get(`${row.chain}:${row.symbol.toLowerCase()}`) || 0) > 1 ? (
+                      <span className="ml-1 font-mono text-[10px] font-normal text-mute">{shortAddr(row.token, 3)}</span>
+                    ) : null}
                   </a>
                   <span className="font-mono text-[11px] uppercase text-mute">{row.chain}</span>
                 </div>
                 <p className="mt-0.5 font-mono text-xs">
-                  {usd(row.usd)} · {row.buys} alım
+                  {usd(row.usd)} · {row.buys} alım · MC {usd(row.mcapLast)}
                   {ready ? <span className="ml-2 text-[#7dff8a]">eşik</span> : null}
                 </p>
                 {status[row.key] ? <p className="text-[11px] text-mute">{status[row.key]}</p> : null}
