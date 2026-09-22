@@ -13,6 +13,7 @@ export type AlertHit = {
   liquidity?: number | null;
   change24?: number | null;
   handles?: string[];
+  buyers?: Array<{ handle: string; src: BuyerSrc }>;
   views?: number;
   honeypot?: boolean | null;
   honeypotLine?: string;
@@ -81,6 +82,75 @@ function esc(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+export type BuyerSrc = "KOL" | "SMART" | "NANSEN" | "BINANCE" | "PUMP" | "AXIOM";
+
+const SRC_RANK: Record<BuyerSrc, number> = { NANSEN: 6, AXIOM: 5, PUMP: 4, BINANCE: 3, KOL: 2, SMART: 1 };
+const SRC_ORDER: BuyerSrc[] = ["KOL", "SMART", "NANSEN", "BINANCE", "PUMP", "AXIOM"];
+
+export function traderSourceFlags(trader: { kind?: string | null; smartReasons?: string[] }) {
+  const tags = new Set<string>();
+  if (trader.kind) tags.add(trader.kind.toLowerCase());
+  for (const s of trader.smartReasons || []) {
+    if (s.startsWith("src:")) tags.add(s.slice(4).toLowerCase());
+  }
+  return [...tags];
+}
+
+function sourceHay(row: { flags?: string[]; smartKind?: string | null; smartReasons?: string[] }) {
+  return [
+    ...(row.flags || []),
+    ...(row.smartReasons || []).map((s) => (s.startsWith("src:") ? s.slice(4) : s)),
+    row.smartKind || "",
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+export function buyerSource(row: { flags?: string[]; smartKind?: string | null; smartReasons?: string[] }): BuyerSrc {
+  const h = sourceHay(row);
+  if (h.includes("nansen")) return "NANSEN";
+  if (h.includes("axiom")) return "AXIOM";
+  if (h.includes("pumpfun") || h.includes("pump.fun") || h.includes("launchpad_smart") || /(^|\s)pump(\s|$)/.test(h)) return "PUMP";
+  if (h.includes("binance")) return "BINANCE";
+  if (/(^|\s)kol(\s|$)/.test(h) || h.includes("renowned") || row.smartKind === "kol") return "KOL";
+  return "SMART";
+}
+
+export function rememberBuyer(
+  bag: Array<{ handle: string; src: BuyerSrc }>,
+  handle: string,
+  src: BuyerSrc,
+) {
+  const name = handle.replace(/^@/, "");
+  if (!name) return bag;
+  const i = bag.findIndex((b) => b.handle.toLowerCase() === name.toLowerCase());
+  if (i < 0) return [...bag, { handle: name, src }];
+  if (SRC_RANK[src] > SRC_RANK[bag[i].src]) bag[i] = { handle: name, src };
+  return bag;
+}
+
+export function formatBuyerLines(
+  buyers: Array<{ handle: string; src: BuyerSrc }>,
+  limit = 8,
+  html = true,
+) {
+  const grouped = new Map<BuyerSrc, string[]>();
+  for (const b of buyers) {
+    const raw = b.handle.replace(/^@/, "");
+    if (!raw) continue;
+    const tag = `@${raw}`;
+    const list = grouped.get(b.src) || [];
+    if (!list.some((x) => x.toLowerCase() === tag.toLowerCase())) list.push(tag);
+    grouped.set(b.src, list);
+  }
+  const n = Math.max(1, grouped.size);
+  const per = Math.max(2, Math.ceil(limit / n));
+  return SRC_ORDER.filter((s) => grouped.has(s)).map((s) => {
+    const body = (grouped.get(s) || []).slice(0, per).join("  ");
+    return `${s} ${html ? esc(body) : body}`;
+  });
+}
+
 function money(n: number | null | undefined) {
   if (n == null || !Number.isFinite(n) || n <= 0) return "\u2014";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
@@ -120,7 +190,11 @@ export function formatAlertHtml(hit: AlertHit) {
     hit.change24 != null && Number.isFinite(hit.change24)
       ? `${hit.change24 >= 0 ? "+" : ""}${hit.change24.toFixed(1)}%`
       : "\u2014";
-  const handles = (hit.handles || []).slice(0, 4).map((h) => (h.startsWith("@") ? h : `@${h}`));
+  const buyers =
+    hit.buyers && hit.buyers.length
+      ? hit.buyers
+      : (hit.handles || []).map((h) => ({ handle: h, src: "SMART" as BuyerSrc }));
+  const buyerLines = formatBuyerLines(buyers);
   const tier = formatTierLine(tierFromViews(hit.views || 0));
   const lines = [
     `<b>${hit.honeypot ? "\ud83d\udd34" : "\ud83d\udfe2"} BUY CLUSTER \u00b7 ${esc(hit.chain.toUpperCase())}</b>`,
@@ -135,7 +209,7 @@ export function formatAlertHtml(hit: AlertHit) {
     `MC ${money(hit.mcap)}   LP ${money(hit.liquidity)}   24h ${esc(pct)}`,
     `${win}dk \u00b7 <b>${hit.buys}</b> al\u0131m \u00b7 <b>${money(hit.usd)}</b>`,
   );
-  if (handles.length) lines.push(`KOL ${esc(handles.join("  "))}`);
+  if (buyerLines.length) lines.push(...buyerLines);
   lines.push(
     "",
     `<a href="${links.dex}">DexScreener</a> \u00b7 <a href="${links.gmgn}">GMGN</a> \u00b7 <a href="${links.based}">BasedBot</a>`,
@@ -184,6 +258,7 @@ export function clusterHits(tape: TapeFill[], windowMin: number, minUsd: number,
         liquidity: row.liquidity,
         change24: row.change24,
         handles: [],
+        buyers: [],
         seen: new Set<string>(),
       } as AlertHit & { seen: Set<string> });
     prev.usd += row.usd || 0;
@@ -196,6 +271,7 @@ export function clusterHits(tape: TapeFill[], windowMin: number, minUsd: number,
       prev.seen.add(h.toLowerCase());
       prev.handles = [...(prev.handles || []), h];
     }
+    if (h) prev.buyers = rememberBuyer(prev.buyers || [], h, buyerSource(row));
     bag.set(key, prev);
   }
   return [...bag.values()]

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { formatBuyerLines } from "@/lib/alert-msg";
 import { usd } from "@/lib/format";
 import { alertStatus, clusterNear, loadAlertRule, onAlertStatus } from "@/lib/alert-engine";
 import { telegramConfigured } from "@/lib/telegram";
@@ -61,7 +62,9 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
                   {ready ? <span className="ml-2 text-[#7dff8a]">eşik</span> : null}
                 </p>
                 {status[row.key] ? <p className="text-[11px] text-mute">{status[row.key]}</p> : null}
-                {row.handles.length ? (
+                {row.buyers.length ? (
+                  <p className="truncate text-[11px] text-mute">{formatBuyerLines(row.buyers, 4, false).join(" · ")}</p>
+                ) : row.handles.length ? (
                   <p className="truncate text-[11px] text-mute">@{row.handles.slice(0, 3).join(" @")}</p>
                 ) : null}
               </li>

@@ -59,7 +59,7 @@ export function TapeTable({ rows }: { rows: TapeFill[] }) {
                   <span className="font-mono text-xs text-mute">{shortAddr(r.wallet)}</span>
                 )}
                 <div className="mt-0.5 flex items-center gap-1">
-                  <SmartBadge kind={r.smartKind} />
+                  <SmartBadge kind={r.smartKind} flags={r.flags} />
                   {r.followers ? <span className="text-[11px] text-mute">{compact(r.followers)} flw</span> : null}
                 </div>
               </td>
