@@ -2,6 +2,7 @@ import { alertKeyboard, alertMcapSkipReason, buyerSource, formatAlertHtml, isWra
 import { attachHoneypot } from "./alert-honeypot";
 import { fetchDexMeta, hydrateHit } from "./dexmeta";
 import { noteLocalHit } from "./hour-client";
+import { usd } from "./format";
 import { logEvent } from "./log";
 import { sendTelegram, telegramConfigured, telegramSentAgo } from "./telegram";
 import { bumpTokenViews } from "./tier";
@@ -182,7 +183,8 @@ async function fireOne(row: NearRow, rule: AlertRule) {
     const mcap = hit.mcap || row.mcapLast;
     const mcapSkip = alertMcapSkipReason(mcap);
     if (mcapSkip) {
-      setStatus(row.key, mcapSkip === "MC < $250k" || mcapSkip === "MC yok" ? `${mcapSkip} · tekrar bakılacak` : mcapSkip);
+      const retry = mcapSkip === "MC < $250k" || mcapSkip === "MC yok";
+      setStatus(row.key, retry ? `${mcapSkip}${mcap ? ` · ${usd(mcap)}` : ""} · tekrar bakılacak` : mcapSkip);
       return;
     }
     const ready = await attachHoneypot({ ...hit, mcap });

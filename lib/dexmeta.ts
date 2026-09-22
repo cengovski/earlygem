@@ -88,29 +88,44 @@ export async function hydrateHit(hit: AlertHit, maxAgeMs = ALERT_MCAP_TTL_MS): P
   };
 }
 
-export async function hydrateFills(rows: TapeFill[], limit = 24): Promise<TapeFill[]> {
-  const need = rows.filter((r) => !r.mcap).slice(0, limit);
-  const seen = new Set<string>();
-  const jobs: TapeFill[] = [];
-  for (const row of need) {
-    const k = key(row.chain, row.token);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    jobs.push(row);
-  }
-  const metas = await Promise.all(jobs.map((row) => fetchDexMeta(row.chain, row.token)));
-  const byKey = new Map<string, DexMeta>();
-  jobs.forEach((row, i) => {
-    if (metas[i]) byKey.set(key(row.chain, row.token), metas[i]!);
-  });
+export function overlayCachedDex(rows: TapeFill[]): TapeFill[] {
   return rows.map((row) => {
-    const meta = byKey.get(key(row.chain, row.token));
+    const meta = cache.get(key(row.chain, row.token))?.meta;
     if (!meta) return row;
+    const symbol = row.symbol && row.symbol !== "???" ? row.symbol : meta.symbol || row.symbol;
+    const name = meta.name && meta.name !== symbol ? meta.name : row.name;
     return {
       ...row,
       mcap: meta.mcap ?? row.mcap,
-      liquidity: row.liquidity || meta.liquidity,
-      change24: row.change24 ?? meta.change24,
+      liquidity: meta.liquidity ?? row.liquidity,
+      change24: meta.change24 ?? row.change24,
+      symbol,
+      name: name && name !== symbol && isQuoteish(name) ? symbol : name,
     };
   });
+}
+
+function isQuoteish(raw: string) {
+  const s = raw.replace(/^\$/, "").trim().toUpperCase();
+  return /^(WSOL|WETH|WBNB|WBTC|SOL|ETH|BNB|USDC|USDT|USD1|JUP|HYPE|FWOG|GIGA|BONK)$/.test(s);
+}
+
+export async function hydrateFills(rows: TapeFill[], limit = 36, maxAgeMs = TTL): Promise<TapeFill[]> {
+  const seen = new Set<string>();
+  const unique: TapeFill[] = [];
+  for (const row of rows) {
+    const k = key(row.chain, row.token);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    unique.push(row);
+  }
+  const jobs = unique
+    .filter((row) => {
+      const hit = cache.get(key(row.chain, row.token));
+      if (!hit) return true;
+      return Date.now() - hit.at >= maxAgeMs;
+    })
+    .slice(0, limit);
+  await Promise.all(jobs.map((row) => fetchDexMeta(row.chain, row.token, maxAgeMs)));
+  return overlayCachedDex(rows);
 }
