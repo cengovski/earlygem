@@ -1,5 +1,6 @@
 import { traderSourceFlags } from "./alert-msg";
 import { gmgnLaneKeys, loadClientKeys } from "./client-keys";
+import { persistGet, persistSet } from "./persist";
 import { gmgnAuthQuery, gmgnSign, gmgnSignMessage } from "./gmgn-sign";
 import { logEvent, logHttpFailure } from "./log";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
@@ -70,6 +71,8 @@ type GmgnEnvelope = {
 
 const lastAt: Record<Lane, number> = { vps: 0, pc: 0 };
 const coolUntil: Record<Lane, number> = { vps: 0, pc: 0 };
+const COOL_KEY = "eg_gmgn_cool";
+let coolLoaded = false;
 let turn = 0;
 let evmCursor = 0;
 let chainLock: Promise<void> = Promise.resolve();
@@ -89,8 +92,35 @@ async function gate(lane: Lane) {
   lastAt[lane] = Date.now();
 }
 
+function loadCool() {
+  if (coolLoaded) return;
+  coolLoaded = true;
+  try {
+    const raw = JSON.parse(persistGet(COOL_KEY) || "null") as { pc?: number; vps?: number } | null;
+    if (!raw) return;
+    coolUntil.pc = Math.max(coolUntil.pc, Number(raw.pc) || 0);
+    coolUntil.vps = Math.max(coolUntil.vps, Number(raw.vps) || 0);
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveCool() {
+  persistSet(COOL_KEY, JSON.stringify({ pc: coolUntil.pc, vps: coolUntil.vps }));
+}
+
 function cool(lane: Lane, ms: number) {
+  loadCool();
   coolUntil[lane] = Math.max(coolUntil[lane], Date.now() + ms);
+  saveCool();
+}
+
+function coolAccount(ms: number) {
+  loadCool();
+  const until = Date.now() + ms;
+  coolUntil.pc = Math.max(coolUntil.pc, until);
+  coolUntil.vps = Math.max(coolUntil.vps, until);
+  saveCool();
 }
 
 function proxyBase() {
@@ -101,6 +131,7 @@ function proxyBase() {
 }
 
 function laneReady(lane: Lane) {
+  loadCool();
   if (Date.now() < coolUntil[lane]) return false;
   if (!gmgnLaneKeys()[lane]) return false;
   if (lane === "vps" && !proxyBase() && typeof window === "undefined") return false;
@@ -127,14 +158,14 @@ function gmgnTradeList(json: Record<string, unknown> | null | undefined): unknow
 }
 
 function coolMs(json: Record<string, unknown> | null, banned: boolean) {
+  const floor = banned ? COOL_BANNED_MS : COOL_EXCEEDED_MS;
   const raw = Number(json?.reset_at);
-  let wait = 0;
+  let wait = floor;
   if (Number.isFinite(raw) && raw > 0) {
-    wait = raw > 10_000_000_000 ? raw - Date.now() : raw * 1000 - Date.now();
+    const until = raw > 10_000_000_000 ? raw : raw * 1000;
+    wait = Math.max(until - Date.now() + 1_000, floor);
   }
-  const fallback = banned ? COOL_BANNED_MS : COOL_EXCEEDED_MS;
-  if (wait < 15_000) return fallback;
-  return Math.min(wait + 1_000, fallback);
+  return Math.min(wait, COOL_BANNED_MS);
 }
 
 export function gmgnCooling() {
@@ -142,14 +173,15 @@ export function gmgnCooling() {
 }
 
 export function gmgnRateCooling() {
+  loadCool();
   return Date.now() < coolUntil.vps || Date.now() < coolUntil.pc;
 }
 
-/** VPS (key 2 + /api/gmgn) then PC (key 1 + laptop IP), then the other way. A 429 only cools that lane. */
+/** Signed Track prefers PC. EXCEEDED cools both keys (same GMGN account bucket). BANNED is per-IP and may fall through. */
 export async function gmgnRequest(
   path: string,
   query: Record<string, string | number | undefined>,
-  opts?: { sign?: boolean; retryEmpty?: boolean },
+  opts?: { sign?: boolean },
 ): Promise<Record<string, unknown> | null> {
   if (!gmgnConfigured()) return null;
   if (opts?.sign && !gmgnPrivateKey()) {
@@ -164,7 +196,6 @@ export async function gmgnRequest(
   }
   return serialize(async () => {
     const lanes = laneOrder(opts?.sign ? "pc" : undefined);
-    const sameKey = gmgnLaneKeys().pc === gmgnLaneKeys().vps;
     for (const lane of lanes) {
       const auth = gmgnAuthQuery();
       const params = new URLSearchParams();
@@ -191,20 +222,8 @@ export async function gmgnRequest(
         }
       }
       const json = await hitLane(lane, path, params, signature);
-      if (json === "rate" || json === "banned") continue;
-      if (json && typeof json === "object") {
-        if (opts?.retryEmpty && !sameKey && gmgnTradeList(json).length === 0) {
-          logEvent({
-            level: "info",
-            event: "gmgn",
-            outcome: "empty",
-            source: "gmgn",
-            detail: `${lane} track boş · diğer ayak`,
-          });
-          continue;
-        }
-        return json;
-      }
+      if (json === "rate") return null;
+      if (json && typeof json === "object") return json;
     }
     return null;
   });
@@ -240,14 +259,15 @@ async function hitLane(lane: Lane, path: string, params: URLSearchParams, signat
     if (res.status === 429 || errText === "RATE_LIMIT_EXCEEDED" || errText === "RATE_LIMIT_BANNED") {
       const banned = errText === "RATE_LIMIT_BANNED";
       const wait = coolMs(json, banned);
-      cool(lane, wait);
+      if (banned) cool(lane, wait);
+      else coolAccount(wait);
       logHttpFailure({
         url: upstream,
         event: "gmgn",
         source: "gmgn",
         status: 429,
         ms,
-        detail: `${tag} ${errText || "rate_limit"} · ${Math.round(wait / 60000)}dk soğuma`,
+        detail: `${tag} ${errText || "rate_limit"} · ${Math.round(wait / 60000)}dk soğuma${banned ? "" : " · hesap"}`,
       });
       return banned ? "banned" : "rate";
     }
@@ -489,7 +509,7 @@ export async function fetchGmgnFollowTape(): Promise<TapeFill[]> {
   followCursor += 1;
   const slug = gmgnSlug(chain);
   if (!slug) return [];
-  const raw = await gmgnRequest("/v1/trade/follow_wallet", { chain: slug, limit: 50 }, { sign: true, retryEmpty: true });
+  const raw = await gmgnRequest("/v1/trade/follow_wallet", { chain: slug, limit: 50 }, { sign: true });
   const rows = gmgnTradeList(raw) as FollowRow[];
   const out: TapeFill[] = [];
   for (const row of rows) {

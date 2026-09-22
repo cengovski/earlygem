@@ -1,4 +1,4 @@
-import { gmgnCooling, gmgnRequest, gmgnSlug } from "./gmgn";
+import { gmgnCooling, gmgnRateCooling, gmgnRequest, gmgnSlug } from "./gmgn";
 import type { ChainId, Gem } from "./types";
 
 const CACHE_MS = 15 * 60_000;
@@ -42,7 +42,7 @@ async function scanOne(chain: ChainId, token: string): Promise<Scan> {
   const cached = cache.get(keyOf(chain, token));
   if (cached && Date.now() - cached.at < CACHE_MS) return cached;
   const slug = gmgnSlug(chain);
-  if (!slug || gmgnCooling()) {
+  if (!slug || gmgnCooling() || gmgnRateCooling()) {
     const fallback = { at: Date.now(), honeypot: false, securityOk: false, launchpad: inferLaunchpad(chain, token), sellTax: 0 };
     return fallback;
   }
@@ -66,7 +66,7 @@ async function scanOne(chain: ChainId, token: string): Promise<Scan> {
 }
 
 export async function attachGmgnSecurity(gems: Gem[], limit = 6): Promise<Gem[]> {
-  if (limit <= 0 || gmgnCooling()) return gems;
+  if (limit <= 0 || gmgnCooling() || gmgnRateCooling()) return gems;
   const out = [...gems];
   const queue = out.filter((g) => g.token).slice(0, limit);
   for (const gem of queue) {
