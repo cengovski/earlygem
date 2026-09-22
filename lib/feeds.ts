@@ -1,11 +1,12 @@
 import { fetchBinanceFeeds } from "./binance";
 import { fetchFomoAlerts } from "./fomoapi";
 import { fetchExtraFeeds } from "./extra-feeds";
-import { gmgnRequest, gmgnSlug } from "./gmgn";
+import { fetchGmgnWalletTape, gmgnRequest, gmgnSlug } from "./gmgn";
 import { logHttpFailure } from "./log";
 import { PULSE_WORKER } from "./pulse";
 import { classifyTrader } from "./smart";
 import { uniqueFills } from "./tape-key";
+import { watchTraders } from "./watchlist";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const PUMP_USERS = "https://frontend-api-v3.pump.fun/users?offset=0&limit=25&sort=followers";
@@ -286,14 +287,17 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
     fetchFomoAlerts(),
     fetchExtraFeeds(),
   ]);
+  const watch = watchTraders();
+  const follow = await fetchGmgnWalletTape(mergeTraders(watch, gmgnParts.flatMap((p) => p.traders)));
   const fills = uniqueFills([
     ...gmgnParts.flatMap((p) => p.fills),
+    ...follow,
     ...bn.fills,
     ...fomo,
     ...extra.fills,
   ]).sort((a, b) => b.ts - a.ts);
   const traders = mergeTraders(
-    [],
+    watch,
     [...gmgnParts.flatMap((p) => p.traders), ...pump, ...bn.traders, ...extra.traders],
   );
   return { fills, traders };

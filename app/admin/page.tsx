@@ -120,6 +120,31 @@ export default function AdminPage() {
         onSubmit={(e) => {
           e.preventDefault();
           saveClientKeys(keys);
+          setMsg("takip listesi bu tarayıcıya yazıldı — GMGN cüzdan turunda döner");
+        }}
+      >
+        <p className="text-sm font-medium">Solana takip listesi</p>
+        <p className="text-xs text-mute">
+          Nansen Smart Money scrape edilmez (Cloudflare, giriş, ücretli API, ToS). Cüzdanları sen yapıştır; radar günde bir kez Nansen’e gitmez. Liste GMGN wallet_activity ile tur atar (tick’te birkaç cüzdan).
+        </p>
+        <label className="block text-sm">
+          cüzdanlar (satır / virgül)
+          <textarea
+            className="mt-1 h-32 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs"
+            value={keys.watchSol || ""}
+            onChange={(e) => setKeys({ ...keys, watchSol: e.target.value })}
+            placeholder={"So11anaWalletxxxxx\nAnotherSolWalletxxxxx"}
+          />
+        </label>
+        <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="submit">
+          listeyi kaydet
+        </button>
+      </form>
+      <form
+        className="mt-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveClientKeys(keys);
           setMsg("honeypot key’ler bu tarayıcıya yazıldı");
         }}
       >

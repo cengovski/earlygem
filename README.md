@@ -18,6 +18,8 @@ npm run dev
 
 Vercel: Next.js. Admin şifresi `ADMIN_PASSWORD`. Feed key’leri Vercel env değil, tarayıcı.
 
+Nansen Smart Money (`app.nansen.ai`) çekilmez. Cloudflare + giriş + ücretli API; ToS tarama yasak. Kendi Solana cüzdan listeni `/admin` veya `keys.json` `watchSol` içine yapıştır; GMGN o cüzdanları turla takip eder.
+
 Telegram çalışmıyorsa `/admin` → **telegram test**. Bot kanalda admin olmalı, chat id `-100…` grup/kanal id’si.
 
 ## GoPlus format
