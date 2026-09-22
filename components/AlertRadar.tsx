@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatBuyerLines } from "@/lib/alert-msg";
+import { formatBuyerLines, mcapInAlertBand } from "@/lib/alert-msg";
 import { usd } from "@/lib/format";
 import { alertStatus, clusterNear, loadAlertRule, onAlertStatus } from "@/lib/alert-engine";
 import { telegramConfigured } from "@/lib/telegram";
@@ -15,7 +15,10 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
 
   useEffect(() => {
     const tick = () => {
-      setRule(loadAlertRule());
+      const next = loadAlertRule();
+      setRule((prev) =>
+        prev.windowMin === next.windowMin && prev.minUsd === next.minUsd && prev.minBuys === next.minBuys ? prev : next,
+      );
       setTgOn(telegramConfigured());
       setStatus(alertStatus());
     };
@@ -48,7 +51,8 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((row) => {
-            const ready = row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2;
+            const mcapOut = row.mcapLast != null && row.mcapLast > 0 && !mcapInAlertBand(row.mcapLast);
+            const ready = row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2 && !mcapOut;
             return (
               <li key={row.key} className="px-3 py-2">
                 <div className="flex items-baseline justify-between gap-2">

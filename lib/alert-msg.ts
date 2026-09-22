@@ -42,10 +42,16 @@ const WRAPPED_SYM = new Set(
     "cbETH", "wstETH", "weETH", "rETH", "WMON", "WAVAX", "WMATIC", "WFTM",
     "WSUI", "WBERA", "SOL", "ETH", "BNB", "BTC", "USDC", "USDT", "USD1",
     "XSOL", "FTT", "ARB", "ZEC", "DOGE", "WIF", "QQQ", "QQQX",
+    "AAVE", "LINK", "UNI", "MKR", "LDO", "CRV", "MNT", "ENS", "COMP", "DAI",
+    "PAXG", "XAUT", "XAU", "PAXGOLD", "CBBTC", "TBTC", "LBTC", "CRO",
+    "GME", "GOOGL", "GOOGLB", "META", "METAB", "MSTR", "COIN", "INTC", "NFLX",
+    "NVDA", "NVDAB", "AAPL", "AMZN", "TSLA", "AMD", "BABA", "SPY", "IWM",
+    "CRCL", "HOOD", "SKY", "USAR", "WELL",
   ].map((s) => s.toUpperCase()),
 );
 
 const JUNK_SYM = /^(pump|pumpfun|sol|wsol|usdc|usdt|eth|weth|bnb|wbnb|btc|wbtc|xsol|doge|arb|zec|ftt|ftx|wif|qqq|qqqx|qqy|cards)$/i;
+const XSTOCK = /^(NVDA|INTC|TSLA|AAPL|GOOGL|META|NFLX|AMZN|COIN|MSTR|GME|HOOD|CRCL|AMD|BABA|SPY|QQQ)X$/i;
 export const MIN_ALERT_MCAP = 250_000;
 export const MAX_ALERT_MCAP = 25_000_000;
 
@@ -69,6 +75,8 @@ export function isWrappedBase(token: string, symbol?: string, name?: string) {
   const label = `${sym} ${name || ""}`.toUpperCase();
   if (/\b(WRAPPED|WORMHOLE|XSTOCK|NASDAQ)\b/.test(label)) return true;
   if (/^W(SOL|ETH|BNB|BTC|MON|AVAX|MATIC|FTM|SUI|BERA)$/.test(sym)) return true;
+  if (/^FW[A-Z0-9]{2,}/.test(sym)) return true;
+  if (XSTOCK.test(sym) || XSTOCK.test((name || "").replace(/^\$/, "").toUpperCase())) return true;
   return false;
 }
 
