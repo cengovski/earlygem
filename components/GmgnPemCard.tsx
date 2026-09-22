@@ -39,7 +39,7 @@ export function GmgnPemCard({
       </label>
       <div className="flex flex-wrap gap-2">
         <button
-          className="rounded-md border border-line px-3 py-1 text-sm"
+          className="whitespace-nowrap rounded-md border border-line px-3 py-1 text-sm"
           type="button"
           disabled={busy}
           onClick={async () => {
@@ -62,7 +62,7 @@ export function GmgnPemCard({
         </button>
         {pub ? (
           <button
-            className="rounded-md border border-line px-3 py-1 text-sm"
+            className="whitespace-nowrap rounded-md border border-line px-3 py-1 text-sm"
             type="button"
             onClick={async () => {
               const ok = await copyText(pub);
@@ -73,7 +73,7 @@ export function GmgnPemCard({
           </button>
         ) : null}
         {createUrl ? (
-          <a className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" href={createUrl} target="_blank" rel="noreferrer">
+          <a className="whitespace-nowrap rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" href={createUrl} target="_blank" rel="noreferrer">
             GMGN’de API key oluştur
           </a>
         ) : null}
