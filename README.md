@@ -5,7 +5,7 @@ FOMO early gem radar. Tüm feed istekleri **tarayıcıdan / senin IP’nden** gi
 ## Akış
 
 1. `/admin` — GMGN, Binance, FOMO, CabalSpy, Telegram vb. key’leri yaz. `localStorage`’da kalır, sunucuya gitmez. Takip listesi (Nansen + elle Solana) GMGN `address/name/emoji` JSON olarak export edilir; gmgn.ai/follow’a yapıştır.
-2. Radar her ~25 sn kaynakları tarayıcıdan çeker. GMGN iki ayak: **VPS** (`/api/gmgn`, key 2) ve **PC** (doğrudan `openapi.gmgn.ai`, key 1), sırayla. 429 yalnız o ayağı soğutur. Opera PC ayağını keser; Chrome kullan. Termux `keys.json` içinde `gmgn`, `gmgn2`, `gmgnPem` (follow Track imzası), `gmgnProxy` (`https://…/api/gmgn`). Private PEM varsa tape, gmgn.ai/follow listesinin resmi `follow_wallet` akışını kullanır (sayfa scrape yok).
+2. Radar her ~25 sn kaynakları tarayıcıdan çeker. GMGN iki ayak: **VPS** (`/api/gmgn`, key 2) ve **PC** (doğrudan `openapi.gmgn.ai`, key 1), sırayla. 429 yalnız o ayağı soğutur. Opera PC ayağını keser; Chrome kullan. Termux `keys.json` içinde `gmgn`, `gmgn2`, `gmgnPem` (follow Track imzası), `gmgnProxy` (`https://…/api/gmgn`). Private PEM varsa tape, `gmgn-cli track follow-wallet` (`GET /v1/trade/follow_wallet`) ile PC key hesabındaki Track listesini okur. 429 yalnız o ayağı soğutur, diğeri denenir.
 3. Fill’ler **20 dakikalık havuza** yazılır (`eg_10m_pool`). Aynı tx / cüzdan+token+usd çakışmaları elenir. DexScreener MC tape satırına basılır ve Telegram için ~25 sn’de bir yenilenir; $250k altı küme izlenir, bandı geçince gider.
 4. Tape bu havuzu basar.
 5. Eşik dolunca CA honeypot taramasından geçer (ücretsiz: GoPlus + Honeypot.is EVM, GoPlus + RugCheck Solana). Telegram’da 🟢 HONEYPOT PASSED veya 🔴 HONEYPOT. Key şart değil. GoPlus panosunda **APP Name yazılmaz**; `goplus` = APP Key, `goplusSecret` = APP Secret. Radar SHA-1 imza ile access token alır. Alıcı satırları kaynağa göre ayrılır: `KOL` / `SMART` / `NANSEN` / `BINANCE` / `PUMP` / `AXIOM`.
@@ -18,7 +18,7 @@ npm run dev
 
 Vercel: Next.js. Admin şifresi `ADMIN_PASSWORD`. Feed key’leri Vercel env değil, tarayıcı.
 
-Nansen: resmi API. `/admin` → Nansen API key. `POST /api/v1/smart-money/dex-trades` **son 24s**, **Solana + Base + Ethereum + BNB + Robinhood**, Smart Trader/30D/90D/180D/Fund, min **$200**, **5 kredi / sayfa** (1000 işlem). Günlük 2 sayfa, «şimdi çek» 3. Liste **21 gün birikir** (tavan 2000). GMGN follow listesine API yazılmaz — export JSON’u [gmgn.ai/follow](https://gmgn.ai/follow) bulk import’a yapıştır. PEM varsa tape yalnız `follow_wallet` (Nansen listesi GMGN Track’te); kol/smart ve wallet_activity aynı listeyi tarmaz.
+Nansen: resmi API. `/admin` → Nansen API key. `POST /api/v1/smart-money/dex-trades` **son 24s**, **Solana + Base + Ethereum + BNB + Robinhood**, Smart Trader/30D/90D/180D/Fund, min **$200**, **5 kredi / sayfa** (1000 işlem). Günlük 2 sayfa, «şimdi çek» 3. Liste **21 gün birikir** (tavan 2000). GMGN follow listesine API yazılmaz — export JSON’u [gmgn.ai/follow](https://gmgn.ai/follow) bulk import’a yapıştır. PEM varsa tape yalnız Track (`follow_wallet`). Nansen listesi o GMGN hesabında olmalı. kol/smart ve wallet_activity aynı listeyi tarmaz.
 
 Telegram çalışmıyorsa `/admin` → **telegram test**. Bot kanalda admin olmalı, chat id `-100…` grup/kanal id’si.
 

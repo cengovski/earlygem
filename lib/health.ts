@@ -14,7 +14,7 @@ export const SOURCE_LABELS = [
   { key: "axiom", label: "Axiom" },
   { key: "binance", label: "Binance" },
   { key: "nansen", label: "Nansen" },
-  { key: "gmgn_follow", label: "GMGN Follow" },
+  { key: "gmgn_follow", label: "GMGN Track" },
   { key: "dex", label: "Dex" },
 ] as const;
 

@@ -89,9 +89,10 @@ export function GmgnPemCard({
         </label>
       ) : null}
       <p className="text-[11px] text-mute">
-        gmgn.ai/follow sayfası CORS ve cookie yüzünden buradan çekilmez. Aynı Track akışı resmi{" "}
-        <span className="font-mono">GET /v1/trade/follow_wallet</span> ile gelir; liste API key’in bağlı olduğu GMGN
-        hesabındadır. Public’i{" "}
+        gmgn.ai Track / follow listesi CORS yüzünden scrape edilmez. Resmi uç{" "}
+        <span className="font-mono">gmgn-cli track follow-wallet</span> ile aynı:{" "}
+        <span className="font-mono">GET /v1/trade/follow_wallet</span>. Liste, PEM ile ürettiğin{" "}
+        <b>PC API key</b> hesabındadır (key 2 ayrı hesaptaysa boş döner). Public’i{" "}
         <a className="text-accent hover:underline" href="https://gmgn.ai/ai" target="_blank" rel="noreferrer">
           gmgn.ai/ai
         </a>{" "}

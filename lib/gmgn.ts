@@ -107,10 +107,34 @@ function laneReady(lane: Lane) {
   return true;
 }
 
-function laneOrder(): Lane[] {
-  const prefer: Lane = turn++ % 2 === 0 ? "vps" : "pc";
-  const next: Lane[] = prefer === "vps" ? ["vps", "pc"] : ["pc", "vps"];
+function laneOrder(prefer?: Lane): Lane[] {
+  const first: Lane = prefer ?? (turn++ % 2 === 0 ? "vps" : "pc");
+  const next: Lane[] = first === "pc" ? ["pc", "vps"] : ["vps", "pc"];
   return next.filter(laneReady);
+}
+
+function gmgnTradeList(json: Record<string, unknown> | null | undefined): unknown[] {
+  if (!json) return [];
+  if (Array.isArray(json.list)) return json.list as unknown[];
+  const data = json.data;
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") {
+    const row = data as Record<string, unknown>;
+    if (Array.isArray(row.list)) return row.list as unknown[];
+    if (Array.isArray(row.activities)) return row.activities as unknown[];
+  }
+  return [];
+}
+
+function coolMs(json: Record<string, unknown> | null, banned: boolean) {
+  const raw = Number(json?.reset_at);
+  let wait = 0;
+  if (Number.isFinite(raw) && raw > 0) {
+    wait = raw > 10_000_000_000 ? raw - Date.now() : raw * 1000 - Date.now();
+  }
+  const fallback = banned ? COOL_BANNED_MS : COOL_EXCEEDED_MS;
+  if (wait < 15_000) return fallback;
+  return Math.min(wait + 1_000, fallback);
 }
 
 export function gmgnCooling() {
@@ -125,7 +149,7 @@ export function gmgnRateCooling() {
 export async function gmgnRequest(
   path: string,
   query: Record<string, string | number | undefined>,
-  opts?: { sign?: boolean },
+  opts?: { sign?: boolean; retryEmpty?: boolean },
 ): Promise<Record<string, unknown> | null> {
   if (!gmgnConfigured()) return null;
   if (opts?.sign && !gmgnPrivateKey()) {
@@ -139,7 +163,8 @@ export async function gmgnRequest(
     return null;
   }
   return serialize(async () => {
-    const lanes = laneOrder();
+    const lanes = laneOrder(opts?.sign ? "pc" : undefined);
+    const sameKey = gmgnLaneKeys().pc === gmgnLaneKeys().vps;
     for (const lane of lanes) {
       const auth = gmgnAuthQuery();
       const params = new URLSearchParams();
@@ -166,8 +191,20 @@ export async function gmgnRequest(
         }
       }
       const json = await hitLane(lane, path, params, signature);
-      if (json && typeof json === "object") return json;
-      if (json === "rate") return null;
+      if (json === "rate" || json === "banned") continue;
+      if (json && typeof json === "object") {
+        if (opts?.retryEmpty && !sameKey && gmgnTradeList(json).length === 0) {
+          logEvent({
+            level: "info",
+            event: "gmgn",
+            outcome: "empty",
+            source: "gmgn",
+            detail: `${lane} track boş · diğer ayak`,
+          });
+          continue;
+        }
+        return json;
+      }
     }
     return null;
   });
@@ -202,16 +239,31 @@ async function hitLane(lane: Lane, path: string, params: URLSearchParams, signat
     const tag = `${lane} ${viaProxy ? "proxy" : "direct"}`;
     if (res.status === 429 || errText === "RATE_LIMIT_EXCEEDED" || errText === "RATE_LIMIT_BANNED") {
       const banned = errText === "RATE_LIMIT_BANNED";
-      cool(lane, banned ? COOL_BANNED_MS : COOL_EXCEEDED_MS);
+      const wait = coolMs(json, banned);
+      cool(lane, wait);
       logHttpFailure({
         url: upstream,
         event: "gmgn",
         source: "gmgn",
         status: 429,
         ms,
-        detail: `${tag} ${errText || "rate_limit"} · ${banned ? "12dk" : "3dk"} soğuma`,
+        detail: `${tag} ${errText || "rate_limit"} · ${Math.round(wait / 60000)}dk soğuma`,
       });
       return banned ? "banned" : "rate";
+    }
+    const apiCode = json?.code;
+    if (apiCode != null && apiCode !== 0 && apiCode !== "0") {
+      if (res.status === 401 || res.status === 403) cool(lane, 60_000);
+      else cool(lane, 15_000);
+      logHttpFailure({
+        url: upstream,
+        event: "gmgn",
+        source: "gmgn",
+        status: res.status,
+        ms,
+        detail: `${tag} code=${String(apiCode)} ${errText || String(json?.message || "")}`.trim(),
+      });
+      return null;
     }
     if (!res.ok || !json) {
       if (res.status === 401 || res.status === 403) cool(lane, 60_000);
@@ -380,7 +432,7 @@ type FollowRow = {
   maker_info?: { twitter_username?: string; name?: string; tags?: string[] };
 };
 
-const FOLLOW_CHAINS: ChainId[] = ["solana", "bsc", "robinhood", "base", "ethereum"];
+const FOLLOW_CHAINS: ChainId[] = ["solana", "solana", "solana", "bsc", "solana", "base", "solana", "ethereum"];
 let followCursor = 0;
 
 function fillFromFollow(row: FollowRow, chain: ChainId): TapeFill | null {
@@ -430,16 +482,15 @@ function fillFromFollow(row: FollowRow, chain: ChainId): TapeFill | null {
   };
 }
 
-/** Live Track feed for wallets followed on gmgn.ai/follow (API key account), not a site scrape. */
+/** Live Track: `gmgn-cli track follow-wallet` = GET /v1/trade/follow_wallet (API key account). */
 export async function fetchGmgnFollowTape(): Promise<TapeFill[]> {
   if (!gmgnFollowConfigured()) return [];
   const chain = FOLLOW_CHAINS[followCursor % FOLLOW_CHAINS.length];
   followCursor += 1;
   const slug = gmgnSlug(chain);
   if (!slug) return [];
-  const raw = await gmgnRequest("/v1/trade/follow_wallet", { chain: slug, limit: 50, side: "buy" }, { sign: true });
-  const data = (raw?.data || raw) as { list?: FollowRow[] } | undefined;
-  const rows = data?.list || [];
+  const raw = await gmgnRequest("/v1/trade/follow_wallet", { chain: slug, limit: 50 }, { sign: true, retryEmpty: true });
+  const rows = gmgnTradeList(raw) as FollowRow[];
   const out: TapeFill[] = [];
   for (const row of rows) {
     const fill = fillFromFollow(row, chainFromGmgn(row.chain) || chain);
@@ -452,7 +503,7 @@ export async function fetchGmgnFollowTape(): Promise<TapeFill[]> {
     outcome: out.length ? "ok" : "empty",
     source: "gmgn",
     count: out.length,
-    detail: `follow_wallet ${chain} · ${out.length} fill`,
+    detail: `track follow_wallet ${chain} · ${out.length} fill`,
   });
   return out;
 }

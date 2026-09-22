@@ -297,7 +297,7 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
   let follow: TapeFill[] = [];
   if (!gmgnCooling()) {
     if (gmgnFollowConfigured()) {
-      if (tick % 2 === 0) follow = await fetchGmgnFollowTape();
+      follow = await fetchGmgnFollowTape();
     } else if (tick % 2 === 0) {
       follow = await fetchGmgnWalletTape(watch);
     } else {
