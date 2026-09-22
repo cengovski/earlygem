@@ -1,5 +1,5 @@
 import { markSource } from "./health";
-import { ingestPool } from "./pool";
+import { ingestPool, readPool } from "./pool";
 import { logEvent } from "./log";
 import type { ChainId, SmartKind, TapeFill } from "./types";
 import { WINDOW_MIN } from "./window";
@@ -10,7 +10,7 @@ const EG_ORIGINS = new Set([
   "https://app.gmgn.ai",
 ]);
 
-function chainOf(raw: string | undefined): ChainId {
+function chainOf(raw: string | undefined, token = ""): ChainId {
   const s = (raw || "").toLowerCase();
   if (s === "sol" || s === "solana") return "solana";
   if (s === "bsc" || s === "bnb") return "bsc";
@@ -18,6 +18,7 @@ function chainOf(raw: string | undefined): ChainId {
   if (s === "eth" || s === "ethereum") return "ethereum";
   if (s === "rh" || s === "robinhood") return "robinhood";
   if (s === "monad") return "monad";
+  if (String(token).startsWith("0x")) return "ethereum";
   return "solana";
 }
 
@@ -58,7 +59,7 @@ function asFill(row: Record<string, unknown>): TapeFill | null {
   return {
     id: String(row.id || `gmgn-live-${row.tx || token}-${ts}`),
     ts,
-    chain: chainOf(String(row.chain || "")),
+    chain: chainOf(String(row.chain || ""), token),
     side: side === "sell" ? "sell" : "buy",
     usd: Number(row.usd || 0),
     amount: Number(row.amount || 0),
@@ -88,8 +89,10 @@ export function ingestGmgnTrackPayload(raw: unknown) {
   const rows = parseGmgnTrackFills(raw);
   const fills = rows.map((r) => asFill(r)).filter(Boolean) as TapeFill[];
   if (!fills.length) return 0;
+  const before = new Set(readPool(WINDOW_MIN).map((row) => row.tx || row.id));
   ingestPool(fills, WINDOW_MIN);
-  const buys = fills.filter((f) => f.side === "buy").length;
+  const buys = readPool(WINDOW_MIN).filter((row) => !before.has(row.tx || row.id) && row.side === "buy").length;
+  if (!buys) return 0;
   logEvent({
     level: "info",
     event: "gmgn_follow",
@@ -98,9 +101,40 @@ export function ingestGmgnTrackPayload(raw: unknown) {
     count: buys,
     detail: `track köprü ${buys} buy / ${fills.length} fill`,
   });
-  if (buys > 0) markSource("gmgn_follow", true, buys);
+  markSource("gmgn_follow", true, buys);
   window.dispatchEvent(new Event("eg-gmgn-track"));
   return buys;
+}
+
+let lastClipAt = 0;
+
+export async function ingestGmgnClipboard() {
+  if (typeof window === "undefined" || !navigator.clipboard?.readText) return 0;
+  const now = Date.now();
+  if (now - lastClipAt < 1500) return 0;
+  lastClipAt = now;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!/eg-gmgn-track|"follow"/.test(text)) return 0;
+    return ingestGmgnTrackPayload(text);
+  } catch {
+    return 0;
+  }
+}
+
+let ingestSince = Date.now() - 20 * 60_000;
+
+export async function pullGmgnIngest() {
+  if (typeof window === "undefined") return 0;
+  try {
+    const res = await fetch(`/api/gmgn-ingest?since=${ingestSince}`, { cache: "no-store" });
+    if (!res.ok) return 0;
+    const json = (await res.json()) as { fills?: unknown; until?: number };
+    if (typeof json.until === "number") ingestSince = json.until;
+    return ingestGmgnTrackPayload(json.fills || []);
+  } catch {
+    return 0;
+  }
 }
 
 let hooked = false;

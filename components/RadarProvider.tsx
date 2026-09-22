@@ -11,7 +11,7 @@ import type { RadarBundle, RadarMeta } from "@/lib/store";
 import { runAlertPass } from "@/lib/alert-engine";
 import type { TapeFill } from "@/lib/types";
 import { maybeFlushHourDigest } from "@/lib/hour-client";
-import { installGmgnTrackBridge } from "@/lib/gmgn-bridge";
+import { installGmgnTrackBridge, ingestGmgnClipboard, pullGmgnIngest } from "@/lib/gmgn-bridge";
 import { WINDOW_MIN } from "@/lib/window";
 
 const POLL_MS = 25_000;
@@ -167,15 +167,25 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("eg-keys", onKeys);
     window.addEventListener("storage", onKeys);
     window.addEventListener("eg-gmgn-track", onKeys);
+    const ingestPoll = window.setInterval(() => {
+      void pullGmgnIngest();
+    }, 2000);
+    const onPointer = () => {
+      void ingestGmgnClipboard();
+    };
+    window.addEventListener("pointerdown", onPointer);
+    void pullGmgnIngest();
     void maybeFlushHourDigest();
     return () => {
       window.clearInterval(poll);
       window.clearInterval(watch);
       window.clearInterval(hour);
+      window.clearInterval(ingestPoll);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("eg-keys", onKeys);
       window.removeEventListener("storage", onKeys);
       window.removeEventListener("eg-gmgn-track", onKeys);
+      window.removeEventListener("pointerdown", onPointer);
     };
   }, [bump, loading]);
 

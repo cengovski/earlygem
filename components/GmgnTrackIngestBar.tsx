@@ -41,7 +41,7 @@ export function GmgnTrackIngestBar() {
       >
         yapıştır
       </button>
-      {hint ? <span className="text-accent">{hint}</span> : <span className="text-mute">gmgn sarı kutu buy JSON → tape</span>}
+      {hint ? <span className="text-accent">{hint}</span> : <span className="text-mute">Track buy: earlygem’e tıkla veya panodan al</span>}
       {open ? (
         <div className="flex w-full flex-wrap items-start gap-2">
           <textarea

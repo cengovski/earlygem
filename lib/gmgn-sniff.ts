@@ -56,6 +56,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     if (s.includes("eth")) return "ethereum";
     if (s.includes("robin") || s.includes("rh")) return "robinhood";
     if (s.includes("monad")) return "monad";
+    const token = String((row && (row.a || row.token || "")) || "");
+    if (token.indexOf("0x") === 0) return "ethereum";
     return "solana";
   }
 
@@ -156,13 +158,28 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     try {
       if (shoot(window.opener, payload)) sent = true;
     } catch (e) {}
-    if (!sent) {
-      try {
-        sent = shoot(window.open("", "earlygem"), payload);
-      } catch (e2) {}
-    }
     bag.posted = sent;
     return sent;
+  }
+
+  function relay(buys) {
+    if (!buys || !buys.length) return;
+    var body = JSON.stringify({ type: "eg-gmgn-track", fills: buys });
+    var urls = [EG + "/api/gmgn-ingest", "http://127.0.0.1:43147/api/gmgn-ingest"];
+    for (var i = 0; i < urls.length; i++) {
+      fetch(urls[i], {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: body,
+        mode: "cors",
+        keepalive: true,
+      })
+        .then(function (r) {
+          if (!r.ok) return;
+          bag.relayed = (bag.relayed || 0) + 1;
+        })
+        .catch(function () {});
+    }
   }
 
   if (!window.__egAckHook) {
@@ -188,32 +205,35 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     }
     if (!fresh.length) return;
     bag.trades = fresh.concat(bag.trades).slice(0, 500);
-    const payload = { type: "eg-gmgn-track", fills: fresh };
-    postEg(payload);
-    const copied = copyBuys();
-    const buys = fresh.filter(function (f) { return f.side === "buy"; }).length;
+    const buys = fresh.filter(function (f) { return f.side === "buy"; });
+    if (!buys.length) return;
+    postEg({ type: "eg-gmgn-track", fills: buys });
+    setTimeout(function () {
+      relay(buys);
+      var now = Date.now();
+      if (!bag.copyAt || now - bag.copyAt > 4000) {
+        copyBuys();
+        bag.copyAt = now;
+      }
+    }, 0);
     const hint = bag.acked != null
       ? "radar OK " + bag.acked
-      : copied
-        ? "COOP · JSON panoda · earlygem Track yapıştır"
-        : "kopya yok — dump()";
+      : "relay " + buys.length + " buy · radar 2sn";
     const line =
       "[eg] TRACK fill " +
       fresh.length +
       " · buy " +
-      buys +
+      buys.length +
       " · toplam " +
       bag.trades.length +
       " · " +
-      (fresh[0].symbol || "") +
-      " " +
-      (fresh[0].side || "") +
-      " $" +
-      Math.round(fresh[0].usd || 0) +
+      (buys[0].symbol || "") +
+      " buy $" +
+      Math.round(buys[0].usd || 0) +
       " · " +
       hint;
-    console.log(line, fresh[0] && fresh[0].token);
-    banner(line + "\n" + (fresh[0].token || "") + "\n" + (fresh[0].tx || ""));
+    console.log(line, buys[0] && buys[0].token);
+    banner(line + "\n" + (buys[0].token || ""));
   }
 
   function ingestWs(body) {
@@ -325,11 +345,11 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
   }
 
   function attachFollow(ws, url) {
-    if (!ws || ws.__egFollow52) return;
-    ws.__egFollow52 = true;
+    if (!ws || ws.__egFollow53) return;
+    ws.__egFollow53 = true;
     const u = shortUrl(url || ws.url || "");
     if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
-    console.log("[eg] v5.2 follow attach", u || "ws");
+    console.log("[eg] v5.3 follow attach", u || "ws");
     try {
       ws.addEventListener("message", function (ev) {
         ingestWs(ev.data);
@@ -339,8 +359,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
 
   const OWS = window.WebSocket;
   const pSend = OWS.prototype.send;
-  if (!window.__egGmgnHookedV52) {
-    window.__egGmgnHookedV52 = true;
+  if (!window.__egGmgnHookedV53) {
+    window.__egGmgnHookedV53 = true;
     OWS.prototype.send = function (data) {
       attachFollow(this, this.url);
       return pSend.call(this, data);
@@ -418,12 +438,12 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     console.log("[eg] DUMP", bag.trades.length, "trades ·", payload.fills.length, "buy");
     console.log(json);
     pageCopy(json);
-    banner("DUMP " + payload.fills.length + " buy · JSON panoda · earlygem Track yapıştır");
+    banner("DUMP " + payload.fills.length + " buy · JSON panoda");
     return json;
   };
 
-  banner("v5.2 takildi — Track YENILEME. Buy JSON panoda; earlygem radar «panodan al».");
-  console.log("[eg] v5.2 takildi — YENILEME. buy fill → JSON panoda, radar ack beklenmiyor");
-  return "[eg] v5.2 — Track yenileme, buy JSON panoda, earlygem panodan al";
+  banner("v5.3 takildi — Track YENILEME. Buy relay radar'a; sell yok.");
+  console.log("[eg] v5.3 takildi — YENILEME. buy fill → /api/gmgn-ingest");
+  return "[eg] v5.3 — Track yenileme, buy relay, radar 2sn";
 })();
 `;
