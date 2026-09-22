@@ -12,7 +12,7 @@ export function GmgnSniffCard() {
     <div className="space-y-2 rounded-xl border border-line bg-surface p-4">
       <p className="text-sm font-medium">GMGN Track köprü (F12)</p>
       <p className="text-[11px] text-mute">
-        gmgn CSP `connect-src` fetch’i keser — relay yok. F12 v5.4 yapıştır (YENİLEME). Buy JSON panoda. Earlygem’e geç, tape’e tıkla (veya panodan al). Sell tape’e girmez. First = ooc:1.
+        gmgn CSP fetch ve form’u keser. Track’i bir kez yenile, F12 v5.5 yapıştır. Overlay earlygem sekmesini açar, buy’lar postMessage ile tape’e düşer. Sell yok. First = ooc:1.
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -21,7 +21,7 @@ export function GmgnSniffCard() {
           onClick={() => {
             window.name = "earlygem";
             window.open("https://gmgn.ai/follow", "gmgntrack");
-            setHint("gmgn Track açıldı — F12 v5.4 yapıştır → YENİLEME — sarı kutu pano, earlygem tıkla");
+            setHint("gmgn Track açıldı — sayfayı bir kez yenile, F12 v5.5 yapıştır");
           }}
         >
           gmgn Track aç
@@ -32,7 +32,7 @@ export function GmgnSniffCard() {
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(GMGN_SNIFF_JS);
-              setHint("F12 v5.4 panoda — gmgn Track console’a yapıştır — YENİLEME");
+              setHint("F12 v5.5 panoda — gmgn Track’i bir kez yenile, console’a yapıştır");
             } catch {
               setHint("kopya yok — aşağıdaki kutudan seç");
             }

@@ -162,36 +162,27 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     return sent;
   }
 
-  function formRelay(buys) {
-    if (!buys || !buys.length || bag.formBlocked) return;
-    if (!window.__egCspHook) {
-      window.__egCspHook = true;
-      document.addEventListener("securitypolicyviolation", function (ev) {
-        var d = String(ev.effectiveDirective || ev.violatedDirective || "");
-        if (d.indexOf("form-action") >= 0) bag.formBlocked = true;
-      });
-    }
-    var form = document.getElementById("eg-relay-form");
-    if (!form) {
-      form = document.createElement("form");
-      form.id = "eg-relay-form";
-      form.method = "POST";
-      form.action = EG + "/api/gmgn-ingest";
-      form.target = "eg_gmgn_relay";
-      form.enctype = "application/x-www-form-urlencoded";
-      form.setAttribute("hidden", "");
-      var input = document.createElement("input");
-      input.type = "hidden";
-      input.name = "payload";
-      form.appendChild(input);
-      document.body.appendChild(form);
-    }
-    form.querySelector("input").value = JSON.stringify({ type: "eg-gmgn-track", fills: buys.slice(0, 20) });
+  function radarAlive(win) {
+    if (!win || win.closed) return false;
     try {
-      form.submit();
-      bag.relayed = (bag.relayed || 0) + 1;
+      var href = String(win.location.href || "");
+      return Boolean(href) && href !== "about:blank" && href.indexOf("about:") !== 0;
     } catch (e) {
-      bag.formBlocked = true;
+      return true;
+    }
+  }
+
+  function ship(buys) {
+    if (!buys || !buys.length) return false;
+    var msg = { type: "eg-gmgn-track", fills: buys };
+    if (!radarAlive(bag.radar)) return false;
+    try {
+      bag.radar.postMessage(msg, "*");
+      try { bag.radar.postMessage(msg, EG); } catch (e0) {}
+      bag.shipped = (bag.shipped || 0) + buys.length;
+      return true;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -220,20 +211,13 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     bag.trades = fresh.concat(bag.trades).slice(0, 500);
     const buys = fresh.filter(function (f) { return f.side === "buy"; });
     if (!buys.length) return;
-    postEg({ type: "eg-gmgn-track", fills: buys });
-    setTimeout(function () {
-      formRelay(buys);
-      var now = Date.now();
-      if (!bag.copyAt || now - bag.copyAt > 2000) {
-        copyBuys();
-        bag.copyAt = now;
-      }
-    }, 0);
+    const shipped = ship(buys);
+    if (!shipped) postEg({ type: "eg-gmgn-track", fills: buys });
     const hint = bag.acked != null
       ? "radar OK " + bag.acked
-      : bag.formBlocked
-        ? "CSP · JSON panoda · earlygem tıkla"
-        : "pano · earlygem tıkla";
+      : shipped
+        ? "postMessage radar"
+        : "radar penceresi yok — overlay'i tekrar yapıştır";
     const line =
       "[eg] TRACK fill " +
       fresh.length +
@@ -360,11 +344,11 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
   }
 
   function attachFollow(ws, url) {
-    if (!ws || ws.__egFollow54) return;
-    ws.__egFollow54 = true;
+    if (!ws || ws.__egFollow55) return;
+    ws.__egFollow55 = true;
     const u = shortUrl(url || ws.url || "");
     if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
-    console.log("[eg] v5.4 follow attach", u || "ws");
+    console.log("[eg] v5.5 follow attach", u || "ws");
     try {
       ws.addEventListener("message", function (ev) {
         ingestWs(ev.data);
@@ -374,8 +358,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
 
   const OWS = window.WebSocket;
   const pSend = OWS.prototype.send;
-  if (!window.__egGmgnHookedV54) {
-    window.__egGmgnHookedV54 = true;
+  if (!window.__egGmgnHookedV55) {
+    window.__egGmgnHookedV55 = true;
     OWS.prototype.send = function (data) {
       attachFollow(this, this.url);
       return pSend.call(this, data);
@@ -457,8 +441,15 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     return json;
   };
 
-  banner("v5.4 takildi — Track YENILEME. fetch yok (CSP). Buy JSON panoda; earlygem tıkla.");
-  console.log("[eg] v5.4 takildi — YENİLEME. connect-src fetch yok, pano + form");
-  return "[eg] v5.4 — Track yenileme, fetch yok, earlygem tıkla";
+  try {
+    bag.radar = window.open(EG + "/", "earlygem");
+  } catch (e) {}
+  banner(radarAlive(bag.radar)
+    ? "v5.5 takildi — Track YENILEME. Buy postMessage, form/fetch yok."
+    : "v5.5 — popup yok. earlygem sekmesini açık tut, overlay'i tekrar yapıştır.");
+  console.log("[eg] v5.5 takildi — YENİLEME. form-action yok, postMessage");
+  return radarAlive(bag.radar)
+    ? "[eg] v5.5 — Track yenileme, buy postMessage"
+    : "[eg] v5.5 — radar penceresi açılmadı";
 })();
 `;
