@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
+import { GmgnExportCard } from "@/components/GmgnExportCard";
 import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
 import { chainLabel, explorerWallet, shortAddr } from "@/lib/format";
 import { loadNansenCache, nansenChainCounts, pullNansenSmart, type NansenCache } from "@/lib/nansen";
@@ -248,6 +249,7 @@ export default function AdminPage() {
           <p className="text-xs text-mute">henüz çekim yok — şimdi çek</p>
         )}
       </form>
+      <GmgnExportCard watchSol={keys.watchSol} nansenAt={nansenInfo?.at} />
       <form
         className="mt-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
         onSubmit={(e) => {
