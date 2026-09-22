@@ -166,30 +166,45 @@ type Job = { chain: ChainId; wallet: string; trader: Trader };
 
 let watchCursor = 0;
 
+const CHAINS: ChainId[] = ["solana", "base", "bsc", "ethereum", "robinhood", "monad"];
+
+function followChainOf(trader: Trader): ChainId | null {
+  const hit = trader.smartReasons.find((s) => s.startsWith("chain:"));
+  if (hit) {
+    const id = hit.slice(6) as ChainId;
+    if (CHAINS.includes(id)) return id;
+  }
+  if (trader.solana) return "solana";
+  return null;
+}
+
 function planJobs(traders: Trader[]): Job[] {
-  const jobs: Job[] = [];
+  const bag: Job[] = [];
   const seen = new Set<string>();
   const push = (job: Job) => {
     const k = `${job.chain}:${job.wallet.toLowerCase()}`;
-    if (seen.has(k) || jobs.length >= MAX_JOBS) return;
+    if (seen.has(k)) return;
     seen.add(k);
-    jobs.push(job);
+    bag.push(job);
   };
-  const sol = traders.filter((t) => t.solana);
-  if (sol.length) {
-    const start = watchCursor % sol.length;
-    watchCursor += MAX_JOBS;
-    for (let i = 0; i < sol.length && jobs.length < MAX_JOBS; i++) {
-      const trader = sol[(start + i) % sol.length];
-      push({ chain: "solana", wallet: trader.solana as string, trader });
+  for (const trader of traders) {
+    const chain = followChainOf(trader);
+    if (chain === "solana" && trader.solana) push({ chain, wallet: trader.solana, trader });
+    else if (chain && trader.address) push({ chain, wallet: trader.address, trader });
+    else if (trader.solana) push({ chain: "solana", wallet: trader.solana, trader });
+  }
+  if (!bag.length) {
+    const extra = GMGN_FOMO_EVM[evmCursor % GMGN_FOMO_EVM.length];
+    evmCursor += 1;
+    for (const trader of traders) {
+      if (trader.address) push({ chain: extra, wallet: trader.address, trader });
     }
   }
-  if (jobs.length >= MAX_JOBS) return jobs;
-  const extra = GMGN_FOMO_EVM[evmCursor % GMGN_FOMO_EVM.length];
-  evmCursor += 1;
-  for (const trader of traders) {
-    if (trader.address) push({ chain: extra, wallet: trader.address, trader });
-  }
+  const jobs: Job[] = [];
+  if (!bag.length) return jobs;
+  const start = watchCursor % bag.length;
+  watchCursor += MAX_JOBS;
+  for (let i = 0; i < bag.length && jobs.length < MAX_JOBS; i++) jobs.push(bag[(start + i) % bag.length]);
   return jobs;
 }
 

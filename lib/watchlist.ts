@@ -7,6 +7,10 @@ export function isSolWallet(raw: string) {
   return s.length >= 32 && s.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(s) && !s.startsWith("0x");
 }
 
+export function isEvmWallet(raw: string) {
+  return /^0x[a-fA-F0-9]{40}$/.test(raw.trim());
+}
+
 export function parseWatchSol(raw?: string) {
   const text = raw || loadClientKeys().watchSol || process.env.WATCH_SOL || "";
   const out: string[] = [];
