@@ -1,6 +1,7 @@
 import type { AlertHit } from "./alert-msg";
 import { logHttpFailure } from "./log";
 import type { ChainId, TapeFill } from "./types";
+import { ALERT_MCAP_TTL_MS } from "./window";
 
 export type DexMeta = {
   mcap: number | null;
@@ -43,10 +44,10 @@ function pick(pairs: Pair[], token: string): DexMeta | null {
   };
 }
 
-export async function fetchDexMeta(chain: ChainId, token: string): Promise<DexMeta | null> {
+export async function fetchDexMeta(chain: ChainId, token: string, maxAgeMs = TTL): Promise<DexMeta | null> {
   const k = key(chain, token);
   const hit = cache.get(k);
-  if (hit && Date.now() - hit.at < TTL) return hit.meta;
+  if (hit && Date.now() - hit.at < maxAgeMs) return hit.meta;
   try {
     const res = await fetch(`https://api.dexscreener.com/tokens/v1/${chain}/${token}`, {
       cache: "no-store",
@@ -74,15 +75,14 @@ export async function fetchDexMeta(chain: ChainId, token: string): Promise<DexMe
   }
 }
 
-export async function hydrateHit(hit: AlertHit): Promise<AlertHit> {
-  if (hit.mcap && hit.liquidity && hit.change24 != null) return hit;
-  const meta = await fetchDexMeta(hit.chain, hit.token);
+export async function hydrateHit(hit: AlertHit, maxAgeMs = ALERT_MCAP_TTL_MS): Promise<AlertHit> {
+  const meta = await fetchDexMeta(hit.chain, hit.token, maxAgeMs);
   if (!meta) return hit;
   return {
     ...hit,
-    mcap: hit.mcap || meta.mcap,
-    liquidity: hit.liquidity || meta.liquidity,
-    change24: hit.change24 ?? meta.change24,
+    mcap: meta.mcap ?? hit.mcap,
+    liquidity: meta.liquidity ?? hit.liquidity,
+    change24: meta.change24 ?? hit.change24,
     symbol: hit.symbol && hit.symbol !== "???" ? hit.symbol : meta.symbol || hit.symbol,
     name: hit.name || meta.name,
   };
@@ -108,7 +108,7 @@ export async function hydrateFills(rows: TapeFill[], limit = 24): Promise<TapeFi
     if (!meta) return row;
     return {
       ...row,
-      mcap: row.mcap || meta.mcap,
+      mcap: meta.mcap ?? row.mcap,
       liquidity: row.liquidity || meta.liquidity,
       change24: row.change24 ?? meta.change24,
     };

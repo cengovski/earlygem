@@ -13,10 +13,11 @@ import { clearSnapshot, lastSnapshot, readSnapshot, writeSnapshot, type RadarBun
 import { uniqueFills } from "./tape-key";
 import { gemsFromSwaps, isSwapFill } from "./trades";
 import type { TapeFill, Trader } from "./types";
+import { WINDOW_MS } from "./window";
 
 const FRESH_MS = 15_000;
 const STALE_MS = 8 * 60_000;
-const TAPE_MAX_AGE_MS = 20 * 60_000;
+const TAPE_MAX_AGE_MS = WINDOW_MS;
 
 const KNOWN_SOL = Object.fromEntries(
   Object.entries(KNOWN_WALLETS)

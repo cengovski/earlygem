@@ -16,7 +16,7 @@
   "bitquery": "",
   "nansen": "",
   "watchSol": "",
-  "windowMin": 10,
+  "windowMin": 20,
   "minUsd": 1000,
   "minBuys": 5
 }

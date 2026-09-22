@@ -13,7 +13,7 @@ import { TapeTable } from "@/components/TapeTable";
 function TapeInner() {
   const view = useSearchParams().get("view") || "all";
   return (
-    <Shell title="Canlı tape" subtitle="10 dk tarayıcı havuzu. Çakışan fill’ler (tx / cüzdan+token+usd) elenir, eşik dolunca alarm çıkar.">
+    <Shell title="Canlı tape" subtitle="20 dk tarayıcı havuzu. Çakışan fill’ler (tx / cüzdan+token+usd) elenir, eşik dolunca alarm çıkar.">
       <PulseGate>
         {(bundle) => {
           const sol = bundle.solTape || [];

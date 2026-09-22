@@ -82,7 +82,7 @@ export function isWrappedBase(token: string, symbol?: string, name?: string) {
 
 export function skipAlertToken(row: { token: string; symbol?: string; name?: string; mcap?: number | null }) {
   if (isWrappedBase(row.token, row.symbol, row.name)) return true;
-  if (row.mcap != null && row.mcap > 0 && !mcapInAlertBand(row.mcap)) return true;
+  if (row.mcap != null && row.mcap > MAX_ALERT_MCAP) return true;
   return false;
 }
 
@@ -308,6 +308,6 @@ export function clusterHits(tape: TapeFill[], windowMin: number, minUsd: number,
   }
   return [...bag.values()]
     .filter((row) => row.usd >= minUsd && row.buys >= minBuys && (row.handles || []).length >= 2)
-    .filter((row) => !row.mcap || mcapInAlertBand(row.mcap))
+    .filter((row) => !row.mcap || row.mcap <= MAX_ALERT_MCAP)
     .map(({ seen: _s, ...rest }) => rest);
 }

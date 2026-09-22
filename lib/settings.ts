@@ -4,7 +4,7 @@ let cache: AlertRule | null = null;
 
 function envRule(): AlertRule {
   return {
-    windowMin: Number(process.env.ALERT_WINDOW_MIN) || 10,
+    windowMin: Number(process.env.ALERT_WINDOW_MIN) || 20,
     minUsd: Number(process.env.ALERT_MIN_USD) || 1000,
     minBuys: Number(process.env.ALERT_MIN_BUYS) || 5,
   };
@@ -66,7 +66,7 @@ export async function loadSettings(): Promise<AlertRule> {
 
 export async function saveSettings(rule: AlertRule) {
   const next: AlertRule = {
-    windowMin: Math.max(1, Math.min(120, Number(rule.windowMin) || 10)),
+    windowMin: Math.max(1, Math.min(120, Number(rule.windowMin) || 20)),
     minUsd: Math.max(100, Number(rule.minUsd) || 1000),
     minBuys: Math.max(1, Math.min(50, Number(rule.minBuys) || 5)),
   };

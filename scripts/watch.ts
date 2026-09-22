@@ -99,7 +99,7 @@ async function main() {
   persistSet(
     "eg_alert_rule",
     JSON.stringify({
-      windowMin: keys.windowMin || 10,
+      windowMin: keys.windowMin || 20,
       minUsd: keys.minUsd || 1000,
       minBuys: keys.minBuys || 5,
     }),

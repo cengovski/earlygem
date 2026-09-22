@@ -1,13 +1,13 @@
-import { alertKeyboard, alertMcapSkipReason, buyerSource, formatAlertHtml, isWrappedBase, mcapInAlertBand, rememberBuyer, skipAlertToken, type BuyerSrc } from "./alert-msg";
+import { alertKeyboard, alertMcapSkipReason, buyerSource, formatAlertHtml, isWrappedBase, MAX_ALERT_MCAP, rememberBuyer, skipAlertToken, type BuyerSrc } from "./alert-msg";
 import { attachHoneypot } from "./alert-honeypot";
-import { hydrateHit } from "./dexmeta";
+import { fetchDexMeta, hydrateHit } from "./dexmeta";
 import { noteLocalHit } from "./hour-client";
 import { logEvent } from "./log";
 import { sendTelegram, telegramConfigured, telegramSentAgo } from "./telegram";
 import { bumpTokenViews } from "./tier";
 import type { ChainId, TapeFill } from "./types";
 import { DEFAULT_RULE, loadRule, type AlertRule } from "./watch";
-import { WINDOW_MS } from "./window";
+import { ALERT_MCAP_TTL_MS, WINDOW_MS } from "./window";
 
 export type NearRow = {
   key: string;
@@ -152,7 +152,7 @@ function readyRows(rows: NearRow[], rule: AlertRule) {
       row.usd >= rule.minUsd &&
       row.buys >= rule.minBuys &&
       row.handles.length >= 2 &&
-      (row.mcapLast == null || row.mcapLast <= 0 || mcapInAlertBand(row.mcapLast)),
+      (row.mcapLast == null || row.mcapLast <= 0 || row.mcapLast <= MAX_ALERT_MCAP),
   );
 }
 
@@ -182,7 +182,7 @@ async function fireOne(row: NearRow, rule: AlertRule) {
     const mcap = hit.mcap || row.mcapLast;
     const mcapSkip = alertMcapSkipReason(mcap);
     if (mcapSkip) {
-      setStatus(row.key, mcapSkip);
+      setStatus(row.key, mcapSkip === "MC < $250k" || mcapSkip === "MC yok" ? `${mcapSkip} · tekrar bakılacak` : mcapSkip);
       return;
     }
     const ready = await attachHoneypot({ ...hit, mcap });
@@ -240,6 +240,15 @@ async function fireOne(row: NearRow, rule: AlertRule) {
 export async function runAlertPass(tape: TapeFill[]) {
   const rule = loadRule();
   const rows = clusterNear(tape, rule);
+  await Promise.all(
+    rows.map(async (row) => {
+      const meta = await fetchDexMeta(row.chain, row.token, ALERT_MCAP_TTL_MS);
+      if (meta?.mcap) {
+        if (!row.mcapFirst) row.mcapFirst = meta.mcap;
+        row.mcapLast = meta.mcap;
+      }
+    }),
+  );
   const ready = readyRows(rows, rule);
   for (const row of ready) {
     const ago = telegramSentAgo(row.key);

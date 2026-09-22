@@ -64,7 +64,7 @@ export default function AdminPage() {
   }
 
   return (
-    <Shell title="Admin" subtitle="Key ve eşik bu tarayıcıda. Feed istekleri senin IP’nden gider. 10 dk havuz tape’e basılır, eşik dolunca alarm çıkar.">
+    <Shell title="Admin" subtitle="Key ve eşik bu tarayıcıda. Feed istekleri senin IP’nden gider. 20 dk havuz tape’e basılır, eşik dolunca alarm çıkar.">
       <form
         className="mb-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
         onSubmit={(e) => {
@@ -73,7 +73,7 @@ export default function AdminPage() {
           setMsg("eşik bu tarayıcıya yazıldı — tape bu pencereyi kullanır");
         }}
       >
-        <p className="text-sm font-medium">Alarm eşiği (10 dk havuz)</p>
+        <p className="text-sm font-medium">Alarm eşiği (20 dk havuz)</p>
         <label className="block text-sm">pencere (dk)<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.windowMin} onChange={(e) => setRule({ ...rule, windowMin: Number(e.target.value) })} /></label>
         <label className="block text-sm">min alım USD<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={100} value={rule.minUsd} onChange={(e) => setRule({ ...rule, minUsd: Number(e.target.value) })} /></label>
         <label className="block text-sm">min alım adedi<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1" type="number" min={1} value={rule.minBuys} onChange={(e) => setRule({ ...rule, minBuys: Number(e.target.value) })} /></label>
