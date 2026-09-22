@@ -89,7 +89,22 @@ export default function AdminPage() {
       >
         <p className="text-sm font-medium">Tarayıcı key’leri</p>
         <p className="text-xs text-mute">Sunucuya gitmez. Key yoksa o kaynak sessiz kalır.</p>
-        <label className="block text-sm">GMGN<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.gmgn || ""} onChange={(e) => setKeys({ ...keys, gmgn: e.target.value })} placeholder="gmgn_..." /></label>
+        <p className="text-sm font-medium">GMGN (iki ayak)</p>
+        <p className="text-xs text-mute">
+          Çağrılar sırayla döner: VPS (key 2, bu sitenin /api/gmgn — Vercel IP) → PC (key 1, laptop tarayıcı IP, doğrudan openapi.gmgn.ai) → VPS → PC. Biri 429 yerse o ayak soğur, diğeri devam eder. Opera PC ayağını CORS ile keser; Chrome’da PC IP çalışır. Key 2 boşsa key 1 her iki ayakta da kullanılır.
+        </p>
+        <label className="block text-sm">
+          GMGN key (PC)
+          <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.gmgn || ""} onChange={(e) => setKeys({ ...keys, gmgn: e.target.value })} placeholder="gmgn_... laptop IP" />
+        </label>
+        <label className="block text-sm">
+          GMGN key 2 (VPS)
+          <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.gmgn2 || ""} onChange={(e) => setKeys({ ...keys, gmgn2: e.target.value })} placeholder="gmgn_... ikinci key, Vercel IP" />
+        </label>
+        <label className="block text-sm">
+          GMGN VPS proxy URL
+          <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="text" value={keys.gmgnProxy || ""} onChange={(e) => setKeys({ ...keys, gmgnProxy: e.target.value })} placeholder="boş = /api/gmgn · Termux: https://earlygem-live.vercel.app/api/gmgn" />
+        </label>
         <label className="block text-sm">Binance key<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceKey || ""} onChange={(e) => setKeys({ ...keys, binanceKey: e.target.value })} /></label>
         <label className="block text-sm">Binance secret<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceSecret || ""} onChange={(e) => setKeys({ ...keys, binanceSecret: e.target.value })} /></label>
         <label className="block text-sm">FOMO API<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.fomo || ""} onChange={(e) => setKeys({ ...keys, fomo: e.target.value })} placeholder="fapi_..." /></label>

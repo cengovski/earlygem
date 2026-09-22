@@ -1,7 +1,12 @@
 import { persistGet, persistSet } from "./persist";
 
 export type ClientKeys = {
+  /** GMGN key used on the PC / browser IP (direct openapi.gmgn.ai). */
   gmgn?: string;
+  /** GMGN key used on the VPS / site proxy IP. */
+  gmgn2?: string;
+  /** Absolute VPS proxy, e.g. https://earlygem-live.vercel.app/api/gmgn. Empty = /api/gmgn in the browser. */
+  gmgnProxy?: string;
   binanceKey?: string;
   binanceSecret?: string;
   fomo?: string;
@@ -38,7 +43,19 @@ export function saveClientKeys(next: ClientKeys) {
 }
 
 export function clientGmgnKey() {
-  return loadClientKeys().gmgn || "";
+  const row = loadClientKeys();
+  return row.gmgn || row.gmgn2 || "";
+}
+
+export function gmgnLaneKeys() {
+  const row = loadClientKeys();
+  const pc = row.gmgn || process.env.GMGN_API_KEY || "";
+  const vps = row.gmgn2 || process.env.GMGN_API_KEY_2 || "";
+  return {
+    pc: pc || vps,
+    vps: vps || pc,
+    proxy: (row.gmgnProxy || process.env.GMGN_PROXY || "").trim().replace(/\/$/, ""),
+  };
 }
 
 export function clientBinance() {
