@@ -6,7 +6,7 @@ FOMO early gem radar. Tüm feed istekleri **tarayıcıdan / senin IP’nden** gi
 
 1. `/admin` — GMGN, Binance, FOMO, CabalSpy, Telegram vb. key’leri yaz. `localStorage`’da kalır, sunucuya gitmez.
 2. Radar her ~25 sn kaynakları tarayıcıdan çeker. GMGN iki ayak: **VPS** (`/api/gmgn`, key 2) ve **PC** (doğrudan `openapi.gmgn.ai`, key 1), sırayla. 429 yalnız o ayağı soğutur. Opera PC ayağını keser; Chrome kullan. Termux `keys.json` içinde `gmgn`, `gmgn2`, `gmgnProxy` (`https://…/api/gmgn`).
-3. Fill’ler **10 dakikalık havuza** yazılır (`eg_10m_pool`). Aynı tx / cüzdan+token+usd çakışmaları elenir.
+3. Fill’ler **20 dakikalık havuza** yazılır (`eg_10m_pool`). Aynı tx / cüzdan+token+usd çakışmaları elenir. Telegram MC’si DexScreener’dan ~25 sn’de bir yenilenir; $250k altı küme izlenir, bandı geçince gider.
 4. Tape bu havuzu basar.
 5. Eşik dolunca CA honeypot taramasından geçer (ücretsiz: GoPlus + Honeypot.is EVM, GoPlus + RugCheck Solana). Telegram’da 🟢 HONEYPOT PASSED veya 🔴 HONEYPOT. Key şart değil. GoPlus panosunda **APP Name yazılmaz**; `goplus` = APP Key, `goplusSecret` = APP Secret. Radar SHA-1 imza ile access token alır. Alıcı satırları kaynağa göre ayrılır: `KOL` / `SMART` / `NANSEN` / `BINANCE` / `PUMP` / `AXIOM`.
 6. Saatlik özet: DexScreener linki, token ilk düştüğündeki MC, son MC.

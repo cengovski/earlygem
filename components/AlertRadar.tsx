@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatBuyerLines, mcapInAlertBand } from "@/lib/alert-msg";
+import { formatBuyerLines, MAX_ALERT_MCAP } from "@/lib/alert-msg";
 import { usd } from "@/lib/format";
 import { alertStatus, clusterNear, loadAlertRule, onAlertStatus } from "@/lib/alert-engine";
 import { telegramConfigured } from "@/lib/telegram";
@@ -47,11 +47,11 @@ export function AlertRadar({ tape }: { tape: TapeFill[] }) {
         </p>
       </div>
       {!rows.length ? (
-        <p className="px-3 py-4 text-xs text-mute">Bu 10 dk havuzda küme yok.</p>
+        <p className="px-3 py-4 text-xs text-mute">Bu 20 dk havuzda küme yok.</p>
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((row) => {
-            const mcapOut = row.mcapLast != null && row.mcapLast > 0 && !mcapInAlertBand(row.mcapLast);
+            const mcapOut = row.mcapLast != null && row.mcapLast > MAX_ALERT_MCAP;
             const ready = row.usd >= rule.minUsd && row.buys >= rule.minBuys && row.handles.length >= 2 && !mcapOut;
             return (
               <li key={row.key} className="px-3 py-2">

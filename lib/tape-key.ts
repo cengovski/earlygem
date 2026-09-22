@@ -24,7 +24,7 @@ function mergeFill(a: TapeFill, b: TapeFill): TapeFill {
     ...base,
     flags: [...new Set([...a.flags, ...b.flags])],
     usd: Math.max(a.usd || 0, b.usd || 0),
-    mcap: base.mcap || other.mcap,
+    mcap: [a.mcap, b.mcap].filter((n): n is number => typeof n === "number" && n > 0).sort((x, y) => y - x)[0] || null,
     liquidity: base.liquidity || other.liquidity,
     change24: base.change24 ?? other.change24,
     handle: base.handle || other.handle,

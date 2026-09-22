@@ -8,7 +8,7 @@ export type AlertRule = {
   minBuys: number;
 };
 
-export const DEFAULT_RULE: AlertRule = { windowMin: 10, minUsd: 1000, minBuys: 5 };
+export const DEFAULT_RULE: AlertRule = { windowMin: 20, minUsd: 1000, minBuys: 5 };
 const RULE_KEY = "eg_alert_rule";
 
 export function serverRule(): AlertRule {
@@ -26,8 +26,9 @@ export function loadRule(): AlertRule {
       };
     }
     const parsed = JSON.parse(raw) as Partial<AlertRule>;
+    const windowMin = Number(parsed.windowMin) || DEFAULT_RULE.windowMin;
     return {
-      windowMin: Number(parsed.windowMin) || DEFAULT_RULE.windowMin,
+      windowMin: windowMin === 10 ? DEFAULT_RULE.windowMin : windowMin,
       minUsd: Number(parsed.minUsd) || DEFAULT_RULE.minUsd,
       minBuys: Number(parsed.minBuys) || DEFAULT_RULE.minBuys,
     };

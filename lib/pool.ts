@@ -4,7 +4,7 @@ import type { TapeFill } from "./types";
 import { WINDOW_MIN } from "./window";
 
 const KEY = "eg_10m_pool";
-const MAX = 600;
+const MAX = 1200;
 
 type Stored = { fills: TapeFill[] };
 
@@ -31,7 +31,7 @@ function prune(rows: TapeFill[], windowMin = WINDOW_MIN) {
     .slice(0, MAX);
 }
 
-/** Merge incoming fills into the 10-minute browser pool, drop collisions, persist. */
+/** Merge incoming fills into the 20-minute browser pool, drop collisions, persist. */
 export function ingestPool(incoming: TapeFill[], windowMin = WINDOW_MIN) {
   const next = prune([...load(), ...incoming], windowMin);
   save(next);

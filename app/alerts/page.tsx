@@ -11,7 +11,7 @@ export default function AlertsPage() {
   return (
     <Shell
       title="Telegram alert"
-      subtitle="Eşik bu tarayıcıda. Tape’deki 10 dk havuz eşiği doldurunca alarm tarayıcıdan (senin IP) gider."
+      subtitle="Eşik bu tarayıcıda. Tape’deki 20 dk havuz eşiği doldurunca alarm tarayıcıdan (senin IP) gider."
     >
       <form
         className="max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
