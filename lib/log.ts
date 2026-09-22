@@ -68,7 +68,7 @@ export function sourceFromUrl(url?: string) {
 function inferKind(row: Pick<LogEvent, "outcome" | "status" | "detail" | "event">): FaultKind | undefined {
   if (row.outcome === "ok" || row.outcome === "empty") return undefined;
   const d = (row.detail || "").toLowerCase();
-  if (row.status === 401 || row.status === 403 || /unauthorized|forbidden|invalid.?key|api.?key|401|403/.test(d)) return "auth";
+  if (row.status === 401 || row.status === 403 || row.status === 402 || /unauthorized|forbidden|invalid.?key|api.?key|401|403|payment|ödeme/.test(d)) return "auth";
   if (row.status === 429 || /rate.?limit|too many/.test(d)) return "rate";
   if (/timeout|aborted|abort|hang/.test(d)) return "timeout";
   if (/\bcors\b|access-control/.test(d)) return "cors";
@@ -230,6 +230,7 @@ function configuredList() {
     const flags: string[] = [];
     if (raw.gmgn) flags.push("gmgn");
     if (raw.gmgn2) flags.push("gmgn2");
+    if (raw.gmgnPem) flags.push("gmgnPem");
     if (raw.binanceKey && raw.binanceSecret) flags.push("binance");
     if (raw.fomo) flags.push("fomo");
     if (raw.cabalspy) flags.push("cabalspy");

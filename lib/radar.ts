@@ -6,6 +6,7 @@ import { classifyTrader, isWatchedKind, traderIndex } from "./smart";
 import { fetchPulseGems, fetchPulseStatus, fetchPulseTape, fetchPulseTraders } from "./sources";
 import { fetchSolWatch } from "./dexwatch";
 import { fetchExternalFeeds, mergeTraders } from "./feeds";
+import { gmgnCooling } from "./gmgn";
 import { logEvent } from "./log";
 import { attachSolana } from "./solmap";
 import { gemsFromSolTape } from "./soltape";
@@ -189,7 +190,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 
   const rawGems = rankGems([...gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape), ...solGems]);
-  const gems = await withTimeout(attachGmgnSecurity(rawGems, 8), 8_000, rawGems);
+  const gems = await withTimeout(attachGmgnSecurity(rawGems, gmgnCooling() ? 0 : 1), 8_000, rawGems);
   const featured = featuredGems(gems, 6);
   const merged = uniqueFills([...tape, ...solTape]).sort((a, b) => b.ts - a.ts).slice(0, 400);
   const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 80);

@@ -2,7 +2,7 @@ import { attachRosterFlags } from "./alert-msg";
 import { fetchBinanceFeeds } from "./binance";
 import { fetchFomoAlerts } from "./fomoapi";
 import { fetchExtraFeeds } from "./extra-feeds";
-import { fetchGmgnFollowTape, fetchGmgnWalletTape, gmgnFollowConfigured, gmgnRequest, gmgnSlug } from "./gmgn";
+import { fetchGmgnFollowTape, fetchGmgnWalletTape, gmgnCooling, gmgnFollowConfigured, gmgnRequest, gmgnSlug } from "./gmgn";
 import { logHttpFailure } from "./log";
 import { PULSE_WORKER } from "./pulse";
 import { classifyTrader } from "./smart";
@@ -277,13 +277,14 @@ export function mergeTraders(base: Trader[], extra: Trader[]) {
   return [...map.values()].sort((a, b) => b.volume - a.volume || b.followers - b.followers);
 }
 
+async function pullRotatedFeed(feedTick: number) {
+  const pair = ROTATE[Math.floor(feedTick / 2) % ROTATE.length];
+  const job = pair[feedTick % 2];
+  return pullFeed(job.kind, job.chain, 30);
+}
+
 export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
-  const pair = ROTATE[rotateAt % ROTATE.length];
-  rotateAt += 1;
-  const gmgnParts = [];
-  for (const job of pair) {
-    gmgnParts.push(await pullFeed(job.kind, job.chain, 30));
-  }
+  const tick = rotateAt++;
   const [pump, bn, fomo, extra, nansen] = await Promise.all([
     pullPumpRoster(),
     fetchBinanceFeeds(),
@@ -292,7 +293,16 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
     pullNansenSmart(),
   ]);
   const watch = mergeFollow(watchTraders(), nansen.traders);
-  const follow = gmgnFollowConfigured() ? await fetchGmgnFollowTape() : await fetchGmgnWalletTape(watch);
+  const gmgnParts: Array<{ fills: TapeFill[]; traders: Trader[] }> = [];
+  let follow: TapeFill[] = [];
+  if (!gmgnCooling()) {
+    const feedTick = Math.floor(tick / 2);
+    if (tick % 2 === 0) {
+      follow = gmgnFollowConfigured() ? await fetchGmgnFollowTape() : await fetchGmgnWalletTape(watch);
+    } else {
+      gmgnParts.push(await pullRotatedFeed(feedTick));
+    }
+  }
   const traders = mergeTraders(
     watch,
     [...gmgnParts.flatMap((p) => p.traders), ...pump, ...bn.traders, ...extra.traders],

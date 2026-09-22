@@ -148,7 +148,7 @@ export default function AdminPage() {
       >
         <p className="text-sm font-medium">Solana takip listesi</p>
         <p className="text-xs text-mute">
-          Elle yapıştırılan cüzdanlar. Nansen resmi API ayrı kartta; scrape yok. GMGN `wallet_activity` yalnız bu liste + Nansen cüzdanlarını tarar (KOL/smart feed ayrı, kuyruğa karışmaz). Turda 8 adres, ~25 sn’de bir; 217 cüzdan yaklaşık 11 dakikada bir tur.
+          Elle yapıştırılan cüzdanlar. Nansen resmi API ayrı kartta; scrape yok. GMGN `wallet_activity` yalnız bu liste + Nansen cüzdanlarını tarar (KOL/smart feed ayrı). PEM yoksa turda 3 adres, iki tick’te bir.
         </p>
         <label className="block text-sm">
           cüzdanlar (satır / virgül)
@@ -173,7 +173,7 @@ export default function AdminPage() {
       >
         <p className="text-sm font-medium">Nansen API</p>
         <p className="text-xs text-mute">
-          Resmi uç: POST /api/v1/smart-money/dex-trades · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / Fund · 5 kredi / istek (tek çağrı, tüm ağlar). Radar 24 saatte bir çeker; kredi bitince durur. Günlük çekim listeyi yeniler, aynı cüzdan (ağ+adres) bir kez durur — birikmez. Elle listedeki aynı adres de tek satır olur. Son işlemler GMGN follow kuyruğunda turda 8 cüzdan taranır (ağlar karışık), KOL/smart akışına karışmaz.
+          Resmi uç: POST /api/v1/smart-money/dex-trades · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / Fund · 5 kredi / istek (tek çağrı, tüm ağlar). Radar 24 saatte bir çeker; kredi bitince durur. Günlük çekim listeyi yeniler, aynı cüzdan (ağ+adres) bir kez durur — birikmez. Elle listedeki aynı adres de tek satır olur. PEM yoksa GMGN wallet_activity turda 3 cüzdan (iki tick’te bir); PEM varsa follow_wallet.
         </p>
         <label className="block text-sm">
           API key
