@@ -118,33 +118,57 @@ const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
     return "";
   }
 
-  function chainOf(row) {
+  function chainOf(row, url) {
     var raw = rawChain(row);
     var mapped = mapChain(raw);
-    var page = mapped ? "" : pageChain();
-    var token = String((row && (row.a || row.ba || row.token || "")) || "");
-    var chain = mapped || page || "";
+    var fromUrl = !mapped && url ? mapChain(url) : "";
+    var page = mapped || fromUrl ? "" : pageChain();
+    var tokenStr = "";
+    if (row) {
+      if (typeof row.a === "string") tokenStr = row.a;
+      else if (typeof row.base_address === "string") tokenStr = row.base_address;
+      else if (typeof row.token === "string") tokenStr = row.token;
+    }
+    var chain = mapped || fromUrl || page || "";
     var guessed = !chain;
-    if (!chain && token.indexOf("0x") !== 0 && token.indexOf("0X") !== 0) chain = "solana";
-    return { chain: chain, chainRaw: raw, fromPage: Boolean(page) && !mapped, guessed: guessed };
+    if (!chain && tokenStr.indexOf("0x") !== 0 && tokenStr.indexOf("0X") !== 0 && tokenStr) chain = "solana";
+    return { chain: chain, chainRaw: raw || fromUrl, fromPage: Boolean(fromUrl || page) && !mapped, guessed: guessed };
   }
 
-  function asFollowTrade(row) {
-    if (!row || typeof row !== "object") return null;
-    const side = String(row.s || row.side || "").toLowerCase();
+  function asFollowTrade(row, url) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+    var rawSide = row.s || row.side || row.event_type || row.eventType || row.event || row.trade_type || row.tradeType || row.action || "";
+    var side = String(rawSide).toLowerCase();
+    if (side === "1" || side === "buy_token") side = "buy";
+    if (side === "0" || side === "sell_token") side = "sell";
     if (side !== "buy" && side !== "sell") return null;
-    const token = row.a || row.ba || row.token_address || row.token || "";
-    if (!token || String(token).length < 8) return null;
-    const tx = row.h || row.tx || row.signature || row.hash || "";
-    const usd = Number(row.au || row.cu || row.amount_usd || row.usd || 0);
+    var tok = {};
+    if (row.base_token && typeof row.base_token === "object") tok = row.base_token;
+    else if (row.token && typeof row.token === "object") tok = row.token;
+    var token = row.a || row.ba || row.base_address || row.token_address || row.tokenAddress || row.baseAddress || row.ca || "";
+    if (!token && typeof row.token === "string") token = row.token;
+    if (!token) token = tok.address || tok.token_address || tok.tokenAddress || "";
+    if (!token || String(token).length < 8 || typeof token !== "string") return null;
+    const tx = row.h || row.transaction_hash || row.tx_hash || row.txHash || row.tx || row.signature || row.hash || "";
+    const usd = Number(row.au || row.cu || row.amount_usd || row.amountUsd || row.cost_usd || row.usd || row.volume_usd || 0);
     if (!tx && usd <= 0) return null;
-    let ts = Number(row.ts || row.timestamp || 0);
+    let ts = Number(row.ts || row.timestamp || row.block_time || row.blockTime || row.time || 0);
     if (ts && ts < 10e9) ts *= 1000;
     if (!ts) ts = Date.now();
-    const maker = row.m || row.ma || row.maker || "";
-    const tags = Array.isArray(row.t) ? row.t : [];
-    const handle = row.nm || row.tun || row.un || (maker ? String(maker).slice(0, 8) : "wallet");
-    const net = chainOf(row);
+    const info = row.maker_info || row.user || {};
+    const maker =
+      row.m ||
+      row.ma ||
+      row.maker ||
+      row.wallet_address ||
+      row.maker_address ||
+      row.trader ||
+      (info && (info.address || info.wallet_address)) ||
+      row.wallet ||
+      "";
+    const tags = Array.isArray(row.t) ? row.t : Array.isArray(info.tags) ? info.tags : Array.isArray(row.tags) ? row.tags : [];
+    const handle = row.nm || row.tun || row.un || info.twitter_username || info.name || (maker ? String(maker).slice(0, 8) : "wallet");
+    const net = chainOf(row, url || "");
     const firstBuy = row.firstBuy === true || Number(row.ooc) === 1;
     return {
       id: "gmgn-live-" + (tx || "x") + "-" + token + "-" + ts,
@@ -155,16 +179,16 @@ const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
       guessed: net.guessed,
       side: side,
       usd: usd,
-      amount: Number(row.ta || row.token_amount || row.amount || 0),
-      price: Number(row.pu || row.price_usd || row.price || 0) || null,
+      amount: Number(row.ta || row.token_amount || row.base_amount || row.amount || 0),
+      price: Number(row.pu || row.price_usd || row.priceUsd || row.price || 0) || null,
       token: String(token),
-      symbol: String(row.bs || row.symbol || "???").trim(),
-      name: String(row.tn || row.bs || row.symbol || "???").trim(),
-      mcap: null,
+      symbol: String(row.bs || tok.symbol || row.symbol || row.token_symbol || "???").trim(),
+      name: String(row.tn || tok.name || tok.symbol || row.symbol || "???").trim(),
+      mcap: row.market_cap != null ? Number(row.market_cap) : row.mcap != null ? Number(row.mcap) : null,
       liquidity: null,
       change24: null,
       pairUrl: null,
-      imageUrl: row.bl || row.avatar || null,
+      imageUrl: row.bl || tok.logo || tok.logo_url || row.avatar || null,
       wallet: maker ? String(maker) : null,
       handle: String(handle),
       followers: row.fc != null ? Number(row.fc) : null,
@@ -295,18 +319,25 @@ const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
       try { data = JSON.parse(body); } catch (e) { return; }
     }
     if (!data || typeof data !== "object") return;
-    if (data.channel !== "following_wallet_activity") return;
-    const rows = Array.isArray(data.data) ? data.data : [];
-    const fills = [];
-    for (var i = 0; i < rows.length; i++) {
-      try {
-        const t = asFollowTrade(rows[i]);
-        if (t) fills.push(t);
-      } catch (e) {
-        egLog("[eg] fill " + (e && e.message ? e.message : e));
+    if (data.channel === "following_wallet_activity") {
+      const rows = Array.isArray(data.data) ? data.data : [];
+      const fills = [];
+      for (var i = 0; i < rows.length; i++) {
+        try {
+          const t = asFollowTrade(rows[i], "");
+          if (t) fills.push(t);
+        } catch (e) {
+          egLog("[eg] fill " + (e && e.message ? e.message : e));
+        }
       }
+      if (fills.length) push(fills);
+      return;
     }
-    if (fills.length) push(fills);
+    try {
+      const fills = [];
+      walk(data, "", fills, 0);
+      if (fills.length) push(fills);
+    } catch (e) {}
   }
 
   function isPoll(u) {
@@ -325,7 +356,7 @@ const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
   }
 
   function asTrade(row, url) {
-    const t = asFollowTrade(row);
+    const t = asFollowTrade(row, url);
     if (t) return t;
     return null;
   }
@@ -385,11 +416,11 @@ const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
   }
 
   function attachFollow(ws, url) {
-    if (!ws || ws.__egFollow56) return;
-    ws.__egFollow56 = true;
+    if (!ws || ws.__egFollow57) return;
+    ws.__egFollow57 = true;
     const u = shortUrl(url || ws.url || "");
     if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
-    egLog("[eg] v5.6 follow attach " + (u || "ws"));
+    egLog("[eg] v5.7 follow attach " + (u || "ws"));
     try {
       ws.addEventListener("message", function (ev) {
         ingestWs(ev.data);
@@ -400,13 +431,16 @@ const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
   }
 
   const OWS = window.WebSocket;
-  if (!window.__egGmgnHookedV56) {
-    window.__egGmgnHookedV56 = true;
+  if (!window.__egGmgnHookedV57ws) {
+    window.__egGmgnHookedV57ws = true;
     const prevSend = OWS.prototype.send;
     OWS.prototype.send = function (data) {
       attachFollow(this, this.url);
       return prevSend.call(this, data);
     };
+  }
+  if (!window.__egGmgnHookedV56) {
+    window.__egGmgnHookedV56 = true;
     try {
       const desc = Object.getOwnPropertyDescriptor(OWS.prototype, "onmessage");
       if (desc && desc.set && !desc.set.__eg56) {
@@ -426,8 +460,8 @@ const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
     } catch (e) {}
   }
 
-  if (!window.__egGmgnHookedV5http) {
-    window.__egGmgnHookedV5http = true;
+  if (!window.__egGmgnHookedV57http) {
+    window.__egGmgnHookedV57http = true;
     const ofetch = window.fetch;
     window.fetch = async function () {
       const url = String(arguments[0] && arguments[0].url ? arguments[0].url : arguments[0]);
@@ -494,8 +528,8 @@ const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
   }
   var opened = radarAlive(bag.radar) || radarAlive(window.opener);
   var hello = opened
-    ? "v5.6 takildi — batch + ag tespiti. Eski overlay varsa Track'i bir kez yenile."
-    : "v5.6 — radar penceresi yok. earlygem /tape acik kalsin.";
+    ? "v5.7 takildi — Track polling + follow. Eski overlay varsa follow sekmesini bir kez yenile."
+    : "v5.7 — radar penceresi yok. earlygem /tape acik kalsin.";
   banner(hello);
   egLog("[eg] " + hello);
   return hello;

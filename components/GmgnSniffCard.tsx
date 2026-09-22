@@ -12,7 +12,7 @@ export function GmgnSniffCard() {
     <div className="space-y-2 rounded-xl border border-line bg-surface p-4">
       <p className="text-sm font-medium">GMGN Track köprü (F12)</p>
       <p className="text-[11px] text-mute">
-        gmgn CSP fetch ve form’u keser. Tape’deki CONNECT dener; olmazsa Track’i bir kez yenile, F12 v5.6 yapıştır. Batch postMessage, ağ `n` alanından. Sell yok. First = ooc:1.
+        gmgn CSP fetch ve form’u keser. Tape’deki CONNECT dener; olmazsa follow’u bir kez yenile, F12 v5.7 yapıştır. Track polling okunur. Batch postMessage, ağ `n` alanından. Sell yok. First = ooc:1.
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -21,7 +21,7 @@ export function GmgnSniffCard() {
           onClick={() => {
             window.name = "earlygem";
             window.open("https://gmgn.ai/follow", "gmgntrack");
-            setHint("gmgn Track açıldı — sayfayı bir kez yenile, F12 v5.6 yapıştır");
+            setHint("gmgn follow açıldı — sayfayı bir kez yenile, F12 v5.7 yapıştır");
           }}
         >
           gmgn Track aç
@@ -32,7 +32,7 @@ export function GmgnSniffCard() {
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(GMGN_SNIFF_JS);
-              setHint("F12 v5.6 panoda — gmgn Track’i bir kez yenile, console’a yapıştır");
+              setHint("F12 v5.7 panoda — gmgn follow’u bir kez yenile, console’a yapıştır");
             } catch {
               setHint("kopya yok — aşağıdaki kutudan seç");
             }

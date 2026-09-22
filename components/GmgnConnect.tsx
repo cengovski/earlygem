@@ -88,7 +88,7 @@ export function GmgnConnect() {
       const line = String((ev as CustomEvent<string>).detail || "");
       if (!line) return;
       push(line);
-      if (/v5\.6 takildi|v5\.6 follow attach/.test(line)) markLinked();
+      if (/v5\.\d+ takildi|v5\.\d+ follow attach/.test(line)) markLinked();
       else if (/TRACK batch|havuz \+/.test(line)) setStatus((prev) => (prev === "bağlandı" ? prev : "canlı"));
     };
     window.addEventListener("eg-gmgn-log", onLog);
@@ -104,7 +104,7 @@ export function GmgnConnect() {
     const code = gmgnSniffSource(window.location.origin);
     setSniff(code);
     const copied = copyText(code);
-    push(copied ? "v5.6 panoya yazıldı" : "pano yazılamadı — alttaki kod kutusundan kopyala");
+    push(copied ? "v5.7 panoya yazıldı" : "pano yazılamadı — alttaki kod kutusundan kopyala");
     let win: Window | null = null;
     try {
       win = window.open(GMGN, "eg-gmgn");
@@ -149,8 +149,8 @@ export function GmgnConnect() {
         }
         push(
           copied
-            ? "v5.6 panoda. gmgn Track’i bir kez yenile, F12 → Console → yapıştır → Enter"
-            : "enjeksiyon reddedildi. Kod kutusundan v5.6’yı kopyala, Track’i yenile, console’a yapıştır",
+            ? "v5.7 panoda. gmgn follow’u bir kez yenile, F12 → Console → yapıştır → Enter"
+            : "enjeksiyon reddedildi. Kod kutusundan v5.7’yi kopyala, follow’u yenile, console’a yapıştır",
         );
         setStatus("F12 gerekli");
         setBusy(false);
@@ -216,7 +216,7 @@ export function GmgnConnect() {
         </p>
       ) : (
         <p className="mt-2 text-[11px] text-mute">
-          https://gmgn.ai/follow açar ve v5.6 kodunu enjekte etmeyi dener. Tutarsa burada “bağlandı” yazar. Tarayıcı keserse hata logda kalır; kod panoya düşer, follow sekmesini bir kez yenileyip console’a yapıştır.
+          https://gmgn.ai/follow açar ve v5.7 kodunu enjekte etmeyi dener. Tutarsa burada “bağlandı” yazar. Tarayıcı keserse hata logda kalır; kod panoya düşer. Follow sekmesini bir kez yenileyip console’a yapıştır — Track polling (dex_trades) ancak o zaman tape’e düşer.
         </p>
       )}
       {open ? (
@@ -229,7 +229,7 @@ export function GmgnConnect() {
           className="mt-2 h-20 w-full rounded-md border border-line bg-[#12110c] p-2 font-mono text-[10px]"
           readOnly
           value={sniff}
-          aria-label="v5.6 overlay"
+          aria-label="v5.7 overlay"
         />
       ) : null}
     </div>
