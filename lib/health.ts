@@ -13,6 +13,7 @@ export const SOURCE_LABELS = [
   { key: "axiom", label: "Axiom" },
   { key: "binance", label: "Binance" },
   { key: "nansen", label: "Nansen" },
+  { key: "gmgn_follow", label: "GMGN Follow" },
   { key: "dex", label: "Dex" },
 ] as const;
 
@@ -58,6 +59,7 @@ export function markFeeds(fills: TapeFill[], traders: Trader[]) {
   markSource("pumpfun", src("pumpfun") > 0, src("pumpfun"));
   markSource("binance", flag("binance") + src("binance") > 0, flag("binance") + src("binance"));
   markSource("nansen", flag("nansen") + src("nansen") > 0, flag("nansen") + src("nansen"));
+  markSource("gmgn_follow", flag("follow") > 0, flag("follow"));
 }
 
 export function sourceStatus(logs: LogEvent[]) {

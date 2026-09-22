@@ -1,5 +1,6 @@
 import { traderSourceFlags } from "./alert-msg";
-import { gmgnLaneKeys } from "./client-keys";
+import { gmgnLaneKeys, loadClientKeys } from "./client-keys";
+import { gmgnAuthQuery, gmgnSign, gmgnSignMessage } from "./gmgn-sign";
 import { logEvent, logHttpFailure } from "./log";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
@@ -22,6 +23,15 @@ export function gmgnApiKey() {
 
 export function gmgnConfigured() {
   return Boolean(gmgnApiKey());
+}
+
+export function gmgnPrivateKey() {
+  const row = loadClientKeys();
+  return (row.gmgnPem || process.env.GMGN_PRIVATE_KEY || "").trim();
+}
+
+export function gmgnFollowConfigured() {
+  return Boolean(gmgnApiKey() && gmgnPrivateKey());
 }
 
 export function gmgnSlug(chain: ChainId): string | null {
@@ -92,24 +102,55 @@ function laneOrder(): Lane[] {
 }
 
 /** VPS (key 2 + /api/gmgn) then PC (key 1 + laptop IP), then the other way. A 429 only cools that lane. */
-export async function gmgnRequest(path: string, query: Record<string, string | number | undefined>): Promise<Record<string, unknown> | null> {
+export async function gmgnRequest(
+  path: string,
+  query: Record<string, string | number | undefined>,
+  opts?: { sign?: boolean },
+): Promise<Record<string, unknown> | null> {
   if (!gmgnConfigured()) return null;
-  const params = new URLSearchParams();
-  for (const [k, value] of Object.entries(query)) {
-    if (value == null || value === "") continue;
-    params.set(k, String(value));
+  if (opts?.sign && !gmgnPrivateKey()) {
+    logEvent({
+      level: "warn",
+      event: "gmgn",
+      outcome: "error",
+      source: "gmgn",
+      detail: "follow_wallet için GMGN private PEM yok",
+    });
+    return null;
   }
-  params.set("timestamp", String(Math.floor(Date.now() / 1000)));
-  params.set("client_id", crypto.randomUUID());
   const lanes = laneOrder();
   for (const lane of lanes) {
-    const json = await hitLane(lane, path, params);
+    const auth = gmgnAuthQuery();
+    const params = new URLSearchParams();
+    const queryMap: Record<string, string> = { ...auth };
+    for (const [k, value] of Object.entries(query)) {
+      if (value == null || value === "") continue;
+      queryMap[k] = String(value);
+    }
+    for (const [k, value] of Object.entries(queryMap)) params.set(k, value);
+    let signature = "";
+    if (opts?.sign) {
+      try {
+        const msg = gmgnSignMessage(path, queryMap, "", auth.timestamp);
+        signature = await gmgnSign(gmgnPrivateKey(), msg);
+      } catch (err) {
+        logHttpFailure({
+          url: `${HOST}${path}`,
+          event: "gmgn",
+          source: "gmgn",
+          err,
+          detail: "follow_wallet imza",
+        });
+        return null;
+      }
+    }
+    const json = await hitLane(lane, path, params, signature);
     if (json) return json;
   }
   return null;
 }
 
-async function hitLane(lane: Lane, path: string, params: URLSearchParams): Promise<Record<string, unknown> | null> {
+async function hitLane(lane: Lane, path: string, params: URLSearchParams, signature = ""): Promise<Record<string, unknown> | null> {
   const key = gmgnLaneKeys()[lane];
   if (!key) return null;
   await gate(lane);
@@ -119,8 +160,16 @@ async function hitLane(lane: Lane, path: string, params: URLSearchParams): Promi
   const url = viaProxy && proxy ? `${proxy}?path=${encodeURIComponent(path)}&${params.toString()}` : upstream;
   const started = Date.now();
   try {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (viaProxy && proxy) {
+      headers["x-eg-gmgn"] = key;
+      if (signature) headers["x-eg-gmgn-sig"] = signature;
+    } else {
+      headers["X-APIKEY"] = key;
+      if (signature) headers["X-Signature"] = signature;
+    }
     const res = await fetch(url, {
-      headers: viaProxy && proxy ? { "x-eg-gmgn": key, Accept: "application/json" } : { "X-APIKEY": key, Accept: "application/json" },
+      headers,
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
@@ -284,3 +333,102 @@ export async function fetchGmgnWalletTape(traders: Trader[]): Promise<TapeFill[]
   }
   return out.sort((a, b) => b.ts - a.ts);
 }
+
+type FollowRow = {
+  chain?: string;
+  transaction_hash?: string;
+  maker?: string;
+  side?: string;
+  amount_usd?: number;
+  token_amount?: number;
+  base_amount?: number | string;
+  price_usd?: number;
+  timestamp?: number;
+  base_address?: string;
+  base_token?: { symbol?: string; name?: string; logo?: string; launchpad?: string };
+  maker_info?: { twitter_username?: string; name?: string; tags?: string[] };
+};
+
+const FOLLOW_CHAINS: ChainId[] = ["solana", "bsc", "robinhood", "base", "ethereum"];
+let followCursor = 0;
+
+function fillFromFollow(row: FollowRow, chain: ChainId): TapeFill | null {
+  const side = (row.side || "").toLowerCase();
+  if (side !== "buy" && side !== "sell") return null;
+  const token = row.base_address;
+  if (!token) return null;
+  const usd = Number(row.amount_usd || 0);
+  if (usd > 0 && usd < MIN_USD) return null;
+  const raw = row.timestamp || 0;
+  const ts = raw > 10_000_000_000 ? raw : raw * 1000;
+  if (!ts || Date.now() - ts > MAX_AGE_MS) return null;
+  const symbol = (row.base_token?.symbol || "???").trim();
+  if (STOCK.test(symbol)) return null;
+  const slug = gmgnSlug(chain) || "sol";
+  const handle =
+    row.maker_info?.twitter_username || row.maker_info?.name || (row.maker || "").slice(0, 8) || "wallet";
+  const tags = (row.maker_info?.tags || []).map((t) => t.toLowerCase());
+  const name = (row.base_token?.name || symbol).trim();
+  const wallet = row.maker || null;
+  return {
+    id: `gmgn-follow-${row.transaction_hash || token}-${ts}`,
+    ts,
+    chain,
+    side,
+    usd,
+    amount: num(row.token_amount ?? row.base_amount),
+    price: Number(row.price_usd || 0) || null,
+    token,
+    symbol,
+    name: name.toLowerCase() === symbol.toLowerCase() ? symbol : name,
+    mcap: null,
+    liquidity: null,
+    change24: null,
+    pairUrl: `https://gmgn.ai/${slug}/token/${token}`,
+    imageUrl: row.base_token?.logo || null,
+    wallet,
+    handle,
+    followers: null,
+    profileUrl: row.maker_info?.twitter_username ? `https://x.com/${row.maker_info.twitter_username}` : null,
+    rank: null,
+    tx: row.transaction_hash || null,
+    firstBuy: false,
+    flags: ["gmgn", "follow", ...tags, ...(row.base_token?.launchpad ? [row.base_token.launchpad] : [])],
+    source: "dexscreener",
+    smartKind: tags.includes("kol") || tags.includes("renowned") ? "kol" : "smart",
+  };
+}
+
+/** Live Track feed for wallets followed on gmgn.ai/follow (API key account), not a site scrape. */
+export async function fetchGmgnFollowTape(): Promise<TapeFill[]> {
+  if (!gmgnFollowConfigured()) return [];
+  const picks: ChainId[] = [];
+  for (let i = 0; i < 2; i++) picks.push(FOLLOW_CHAINS[(followCursor + i) % FOLLOW_CHAINS.length]);
+  followCursor += 2;
+  const bags = await Promise.all(
+    picks.map(async (chain) => {
+      const slug = gmgnSlug(chain);
+      if (!slug) return [] as TapeFill[];
+      const raw = await gmgnRequest("/v1/trade/follow_wallet", { chain: slug, limit: 50, side: "buy" }, { sign: true });
+      const data = (raw?.data || raw) as { list?: FollowRow[] } | undefined;
+      const rows = data?.list || [];
+      const fills: TapeFill[] = [];
+      for (const row of rows) {
+        const fill = fillFromFollow(row, chainFromGmgn(row.chain) || chain);
+        if (fill) fills.push(fill);
+      }
+      return fills;
+    }),
+  );
+  const out = bags.flat().sort((a, b) => b.ts - a.ts);
+  logEvent({
+    level: out.length ? "info" : "warn",
+    event: "gmgn_follow",
+    outcome: out.length ? "ok" : "empty",
+    source: "gmgn",
+    count: out.length,
+    detail: `follow_wallet ${picks.join("+")} · ${out.length} fill`,
+  });
+  return out;
+}
+

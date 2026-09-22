@@ -5,6 +5,8 @@ export type ClientKeys = {
   gmgn?: string;
   /** GMGN key used on the VPS / site proxy IP. */
   gmgn2?: string;
+  /** Ed25519/RSA private PEM used when creating the GMGN API key. Needed for follow_wallet. Never sent to our server. */
+  gmgnPem?: string;
   /** Absolute VPS proxy, e.g. https://earlygem-live.vercel.app/api/gmgn. Empty = /api/gmgn in the browser. */
   gmgnProxy?: string;
   binanceKey?: string;
