@@ -14,6 +14,34 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
   });
   const seenTx = new Set((bag.trades || []).map((t) => t.tx || t.id).filter(Boolean));
 
+  function pageCopy(text) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = String(text || "");
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function banner(text) {
+    let el = document.getElementById("eg-gmgn-banner");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "eg-gmgn-banner";
+      el.style.cssText =
+        "position:fixed;z-index:2147483647;left:8px;right:8px;bottom:8px;max-height:42vh;overflow:auto;background:#16140c;color:#c6ff9a;font:12px/1.4 ui-monospace,SFMono-Regular,monospace;padding:10px 12px;border:1px solid #7dff8a;border-radius:8px;white-space:pre-wrap;word-break:break-all";
+      document.body.appendChild(el);
+    }
+    el.textContent = String(text || "");
+  }
+
   function trackUrl(u) {
     const s = String(u || "");
     if (
@@ -125,20 +153,7 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
       return;
     }
     if (typeof node !== "object") return;
-    for (const k of [
-      "list",
-      "data",
-      "activities",
-      "trades",
-      "transactions",
-      "result",
-      "rows",
-      "records",
-      "items",
-      "fills",
-      "events",
-      "ticks",
-    ]) {
+    for (const k of ["list", "data", "activities", "trades", "transactions", "result", "rows", "records", "items", "fills", "events", "ticks"]) {
       if (node[k]) walk(node[k], url, out, depth + 1);
     }
   }
@@ -166,7 +181,12 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
         data = { raw: String(body).slice(0, 400) };
       }
     }
-    const keys = data && typeof data === "object" && !Array.isArray(data) ? Object.keys(data) : Array.isArray(data) ? ["<array:" + data.length + ">"] : [];
+    const keys =
+      data && typeof data === "object" && !Array.isArray(data)
+        ? Object.keys(data)
+        : Array.isArray(data)
+          ? ["<array:" + data.length + ">"]
+          : [];
     const inner = data && data.data;
     const innerKeys =
       inner && typeof inner === "object" && !Array.isArray(inner)
@@ -174,11 +194,16 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
         : Array.isArray(inner)
           ? ["<array:" + inner.length + ">"]
           : [];
-    const sample = String(typeof body === "string" ? body : JSON.stringify(body || "")).slice(0, 1800);
+    const sample = String(typeof body === "string" ? body : JSON.stringify(body || "")).slice(0, 2500);
     bag.peek = { url: String(url).slice(0, 220), keys, innerKeys, sample, n: sample.length };
     bag.peeks = [bag.peek].concat(bag.peeks || []).slice(0, 8);
     console.log("[eg] PEEK", bag.peek.url, "len", sample.length, "keys", keys, "data.keys", innerKeys);
-    if (isPoll(url) || sample.length > 40) console.log("[eg] SAMPLE", sample.slice(0, 1000));
+    if (isPoll(url) || sample.length > 40) {
+      console.log("[eg] PEEK JSON (bunu earlygem sohbetine yapistir)");
+      console.log(JSON.stringify(bag.peek));
+      pageCopy(JSON.stringify(bag.peek));
+      banner("PEEK " + sample.length + " byte\nkeys " + keys.join(",") + "\n" + sample.slice(0, 900) + "\n\nJSON panoda — earlygem sohbetine yapistir");
+    }
   }
 
   function push(fills) {
@@ -228,13 +253,13 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     if (base && !bag.urls.includes(base)) bag.urls.push(base);
     const interesting = trackUrl(u) || isPoll(u) || kind === "ws";
     if (interesting) {
-      console.log("[eg] UÇ", kind, base || u.slice(0, 120), "bytes", String(body || "").length);
+      console.log("[eg] UC", kind, base || u.slice(0, 120), "bytes", String(body || "").length);
       snapshot(u, body);
     }
     if (!trackUrl(u) && kind !== "ws") return;
     try {
       const fills = pick(body, u);
-      if (isPoll(u) && !fills.length) console.log("[eg] polling parse 0 — SAMPLE yukarıda, dump için __egGmgn.peek");
+      if (isPoll(u) && !fills.length) console.log("[eg] polling parse 0 — sari kutudaki JSON yeter");
       push(fills);
     } catch (e) {
       console.warn("[eg] parse", e);
@@ -248,28 +273,35 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
     console.log("[eg] WS attach", u);
     try {
-      ws.addEventListener("message", (ev) => note("ws", u, ev.data));
+      ws.addEventListener("message", function (ev) {
+        note("ws", u, ev.data);
+      });
     } catch (e) {}
   }
 
   function huntWs() {
     const found = [];
     try {
-      performance.getEntriesByType("resource").forEach((e) => {
+      performance.getEntriesByType("resource").forEach(function (e) {
         if (/^wss?:/i.test(e.name) && found.indexOf(e.name) < 0) found.push(e.name);
       });
     } catch (e) {}
-    const webpackKeys = Object.keys(window).filter((k) => /webpackChunk/i.test(k));
-    const sockKeys = Object.getOwnPropertyNames(window).filter((k) => /socket|quotation|ws/i.test(k));
-    bag.wsMeta = { perf: found, webpackKeys, sockKeys };
-    found.forEach((u) => {
+    bag.wsMeta = {
+      perf: found,
+      webpackKeys: Object.keys(window).filter(function (k) {
+        return /webpackChunk/i.test(k);
+      }),
+      sockKeys: Object.getOwnPropertyNames(window).filter(function (k) {
+        return /socket|quotation|ws/i.test(k);
+      }),
+    };
+    found.forEach(function (u) {
       if (bag.ws.indexOf(u) < 0) bag.ws.push(u);
     });
-    console.log("[eg] hunt WS", bag.wsMeta);
   }
 
-  if (!window.__egGmgnHookedV3) {
-    window.__egGmgnHookedV3 = true;
+  if (!window.__egGmgnHookedV4) {
+    window.__egGmgnHookedV4 = true;
     const ofetch = window.fetch;
     window.fetch = async function () {
       const url = String(arguments[0] && arguments[0].url ? arguments[0].url : arguments[0]);
@@ -277,7 +309,7 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
       try {
         const copy = res.clone();
         const ct = copy.headers.get("content-type") || "";
-        if (/json|text/i.test(ct)) copy.text().then((t) => note("fetch", url, t)).catch(() => {});
+        if (/json|text/i.test(ct)) copy.text().then(function (t) { note("fetch", url, t); }).catch(function () {});
         else note("fetch", url, "");
       } catch (e) {}
       return res;
@@ -289,7 +321,9 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
       return oxhr.apply(this, arguments);
     };
     XMLHttpRequest.prototype.send = function () {
-      this.addEventListener("load", () => note("xhr", this.__egUrl, xhrBody(this)));
+      this.addEventListener("load", function () {
+        note("xhr", this.__egUrl, xhrBody(this));
+      });
       return osend.apply(this, arguments);
     };
     const OWS = window.WebSocket;
@@ -331,7 +365,9 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     console.log = function () {
       try {
         const s = Array.prototype.map
-          .call(arguments, (a) => (typeof a === "string" ? a : ""))
+          .call(arguments, function (a) {
+            return typeof a === "string" ? a : "";
+          })
           .join(" ");
         if (/QuotationSocketMgr|websocket opened/i.test(s)) {
           olog.call(console, "[eg] SOCKET LOG", s.slice(0, 160));
@@ -342,36 +378,29 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     };
   }
 
-  bag.dump = () => {
+  bag.dump = function () {
     huntWs();
-    console.log("URLS", bag.urls);
-    console.log("WS", bag.ws, bag.wsMeta);
-    console.log("PEEK", bag.peek);
-    console.log("PEEKS", bag.peeks);
-    console.log("TRADES", bag.trades.length);
-    return {
+    const payload = {
       urls: bag.urls,
       ws: bag.ws,
       wsMeta: bag.wsMeta,
       peek: bag.peek,
       peeks: bag.peeks,
       hits: bag.hits.slice(0, 20),
-      trades: bag.trades.length,
+      tradeCount: bag.trades.length,
+      trades: bag.trades.slice(0, 40),
     };
-  };
-  bag.copyTrades = () => {
-    try {
-      copy(JSON.stringify(bag.trades.slice(0, 80), null, 2));
-      console.log("[eg] trade JSON panoda");
-    } catch (e) {
-      console.log("[eg] copy yok — __egGmgn.trades");
-    }
-    return bag.trades.length;
+    const json = JSON.stringify(payload);
+    console.log("[eg] DUMP JSON (bunu earlygem sohbetine yapistir)");
+    console.log(json);
+    pageCopy(json);
+    banner("DUMP " + json.length + " byte · peek " + (bag.peek && bag.peek.n) + " · trades " + bag.trades.length + "\nJSON panoda");
+    return json;
   };
 
   huntWs();
-  console.log("[eg] v3 takıldı — Track'i YENİLEME. 8-15 sn bekle.");
-  console.log("[eg] sonra: __egGmgn.dump()   peek: __egGmgn.peek   trades: __egGmgn.copyTrades()");
-  return bag;
+  banner("v4 takildi — Track YENILEME. 10 sn bekle, sari kutu gelsin, JSON'u earlygem'e yapistir.");
+  console.log("[eg] v4 takildi — YENILEME. 10 sn sonra sari kutu veya __egGmgn.dump()");
+  return "[eg] v4 — 10sn bekle, sari kutudaki JSON'u earlygem sohbetine yapistir (kodu degil)";
 })();
 `;
