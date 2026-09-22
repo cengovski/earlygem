@@ -12,7 +12,7 @@ export function GmgnSniffCard() {
     <div className="space-y-2 rounded-xl border border-line bg-surface p-4">
       <p className="text-sm font-medium">GMGN Track köprü (F12)</p>
       <p className="text-[11px] text-mute">
-        OpenAPI follow_wallet bu hesapta ban yedi. Track, gmgn.ai’de açık oturumun kendi fetch/WS uçlarından gelir. Önce bu sekmeyi açık tut, Track’i buradan aç, F12 kodunu gmgn sekmesine yapıştır, gmgn sayfasını yenile.
+        Canlı Track: XHR /api/v1/dex_trades_polling + QuotationSocketMgr. F12 v3 yalnız bunları parse eder; cüzdan/balance listesini atlar. earlygem açık kalsın → Track zaten açıksa kodu yapıştır → sayfayı YENİLEME → 10 sn bekle → __egGmgn.dump().
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -21,7 +21,7 @@ export function GmgnSniffCard() {
           onClick={() => {
             window.name = "earlygem";
             window.open("https://gmgn.ai/follow", "gmgntrack");
-            setHint("gmgn Track açıldı — o sekmede F12 → Console → kodu yapıştır → sayfayı yenile");
+            setHint("gmgn Track açıldı — F12 Console → kodu yapıştır → YENİLEME, 10 sn bekle, __egGmgn.dump()");
           }}
         >
           gmgn Track aç
@@ -32,7 +32,7 @@ export function GmgnSniffCard() {
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(GMGN_SNIFF_JS);
-              setHint("F12 kodu panoda — gmgn sekmesi console’a yapıştır");
+              setHint("F12 kodu panoda — gmgn sekmesi console’a yapıştır, yenileme");
             } catch {
               setHint("kopya yok — aşağıdaki kutudan seç");
             }
@@ -43,8 +43,8 @@ export function GmgnSniffCard() {
       </div>
       <textarea className="h-28 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[10px]" readOnly value={GMGN_SNIFF_JS} />
       <p className="text-[11px] text-mute">
-        Console: <span className="font-mono">__egGmgn.dump()</span> uç listesi, <span className="font-mono">__egGmgn.copyTrades()</span> trade JSON.
-        Köprü olmazsa JSON’u aşağı yapıştır.
+        Console: <span className="font-mono">__egGmgn.dump()</span> (peek = polling gövdesi), <span className="font-mono">__egGmgn.copyTrades()</span> trade JSON.
+        Köprü olmazsa dump veya trades JSON’unu aşağı yapıştır.
       </p>
       <textarea
         className="h-20 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[10px]"

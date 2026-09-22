@@ -1,3 +1,377 @@
 export const GMGN_SNIFF_ORIGIN = "https://earlygem-live.vercel.app";
 
-export const GMGN_SNIFF_JS = "(() => {\n  const EG = \"https://earlygem-live.vercel.app\";\n  const bag = (window.__egGmgn = window.__egGmgn || { urls: [], ws: [], hits: [], trades: [] });\n  const seenTx = new Set(bag.trades.map((t) => t.tx).filter(Boolean));\n\n  function chainOf(url, row) {\n    const s = String((row && (row.chain || row.network)) || url || \"\").toLowerCase();\n    if (s.includes(\"sol\")) return \"solana\";\n    if (s.includes(\"bsc\") || s.includes(\"bnb\")) return \"bsc\";\n    if (s.includes(\"base\")) return \"base\";\n    if (s.includes(\"eth\")) return \"ethereum\";\n    if (s.includes(\"robin\") || s.includes(\"rh\")) return \"robinhood\";\n    if (s.includes(\"monad\")) return \"monad\";\n    return \"solana\";\n  }\n\n  function asTrade(row, url) {\n    if (!row || typeof row !== \"object\") return null;\n    const side = String(row.side || row.event_type || row.eventType || \"\").toLowerCase();\n    if (side && side !== \"buy\" && side !== \"sell\") return null;\n    const token = row.base_address || row.token_address || row.tokenAddress || (row.token && (row.token.address || row.token)) || row.address;\n    if (!token || typeof token !== \"string\" || token.length < 8) return null;\n    const usd = Number(row.amount_usd || row.amountUsd || row.cost_usd || row.usd || 0);\n    let ts = Number(row.timestamp || row.ts || row.block_time || row.time || 0);\n    if (ts && ts < 10e9) ts *= 1000;\n    if (!ts) ts = Date.now();\n    const tok = row.base_token || row.token || {};\n    const maker = row.maker || row.wallet || row.wallet_address || (row.maker_info && row.maker_info.address) || \"\";\n    const info = row.maker_info || {};\n    return {\n      id: \"gmgn-live-\" + (row.transaction_hash || row.tx || token) + \"-\" + ts,\n      ts,\n      chain: chainOf(url, row),\n      side: side === \"sell\" ? \"sell\" : \"buy\",\n      usd,\n      amount: Number(row.token_amount || row.base_amount || row.amount || 0),\n      price: Number(row.price_usd || row.priceUsd || row.price || 0) || null,\n      token: String(token),\n      symbol: String(tok.symbol || row.symbol || \"???\").trim(),\n      name: String(tok.name || tok.symbol || row.symbol || \"???\").trim(),\n      mcap: null,\n      liquidity: null,\n      change24: null,\n      pairUrl: null,\n      imageUrl: tok.logo || null,\n      wallet: maker ? String(maker) : null,\n      handle: info.twitter_username || info.name || (maker ? String(maker).slice(0, 8) : \"wallet\"),\n      followers: null,\n      profileUrl: info.twitter_username ? \"https://x.com/\" + info.twitter_username : null,\n      rank: null,\n      tx: row.transaction_hash || row.tx || row.signature || null,\n      firstBuy: false,\n      flags: [\"gmgn\", \"follow\", \"track\"],\n      source: \"dexscreener\",\n      smartKind: (info.tags || []).some((x) => /kol|renowned/i.test(x)) ? \"kol\" : \"smart\",\n    };\n  }\n\n  function walk(node, url, out) {\n    if (!node) return;\n    if (Array.isArray(node)) {\n      for (const item of node) {\n        const t = asTrade(item, url);\n        if (t) out.push(t);\n        else walk(item, url, out);\n      }\n      return;\n    }\n    if (typeof node !== \"object\") return;\n    for (const k of [\"list\", \"data\", \"activities\", \"trades\", \"transactions\", \"result\", \"rows\"]) {\n      if (node[k]) walk(node[k], url, out);\n    }\n  }\n\n  function pick(body, url) {\n    let data = body;\n    if (typeof body === \"string\") {\n      try { data = JSON.parse(body); } catch { return []; }\n    }\n    const out = [];\n    walk(data, url, out);\n    return out;\n  }\n\n  function push(fills) {\n    if (!fills.length) return;\n    const fresh = [];\n    for (const f of fills) {\n      const k = f.tx || f.id;\n      if (k && seenTx.has(k)) continue;\n      if (k) seenTx.add(k);\n      fresh.push(f);\n    }\n    if (!fresh.length) return;\n    bag.trades = fresh.concat(bag.trades).slice(0, 500);\n    const msg = { type: \"eg-gmgn-track\", fills: fresh };\n    try {\n      if (window.opener) window.opener.postMessage(msg, EG);\n    } catch (e) {}\n    try {\n      const eg = window.open(\"\", \"earlygem\");\n      if (eg && eg !== window) eg.postMessage(msg, EG);\n    } catch (e) {}\n    console.log(\"[eg] pool'a \" + fresh.length + \" fill \u00b7 toplam \" + bag.trades.length);\n  }\n\n  function note(kind, url, body) {\n    const u = String(url || \"\");\n    bag.hits.unshift({ t: new Date().toISOString(), kind, url: u.slice(0, 220) });\n    bag.hits.splice(60);\n    const base = u.split(\"?\")[0];\n    if (base && !bag.urls.includes(base)) bag.urls.push(base);\n    if (/ws|socket|follow|track|activity|trade|wallet/i.test(u)) {\n      console.log(\"[eg] U\u00c7\", kind, base);\n    }\n    try { push(pick(body, u)); } catch (e) { console.warn(\"[eg] parse\", e); }\n  }\n\n  if (!window.__egGmgnHooked) {\n    window.__egGmgnHooked = true;\n    const ofetch = window.fetch;\n    window.fetch = async function () {\n      const url = String(arguments[0] && arguments[0].url ? arguments[0].url : arguments[0]);\n      const res = await ofetch.apply(this, arguments);\n      try {\n        const copy = res.clone();\n        const ct = copy.headers.get(\"content-type\") || \"\";\n        if (/json|text/i.test(ct)) copy.text().then((t) => note(\"fetch\", url, t)).catch(() => {});\n        else note(\"fetch\", url, \"\");\n      } catch (e) {}\n      return res;\n    };\n    const oxhr = XMLHttpRequest.prototype.open;\n    const osend = XMLHttpRequest.prototype.send;\n    XMLHttpRequest.prototype.open = function (m, u) {\n      this.__egUrl = u;\n      return oxhr.apply(this, arguments);\n    };\n    XMLHttpRequest.prototype.send = function () {\n      this.addEventListener(\"load\", () => note(\"xhr\", this.__egUrl, this.responseText));\n      return osend.apply(this, arguments);\n    };\n    const OWS = window.WebSocket;\n    window.WebSocket = function (url, proto) {\n      bag.ws.push(String(url));\n      console.log(\"[eg] WS OPEN\", url);\n      const ws = proto !== undefined ? new OWS(url, proto) : new OWS(url);\n      ws.addEventListener(\"message\", (ev) => note(\"ws\", url, ev.data));\n      return ws;\n    };\n    window.WebSocket.prototype = OWS.prototype;\n    window.WebSocket.OPEN = OWS.OPEN;\n    window.WebSocket.CLOSED = OWS.CLOSED;\n    const oAdd = EventTarget.prototype.addEventListener;\n    EventTarget.prototype.addEventListener = function (type, fn, opt) {\n      if (/message|trade|follow|track|open|tick/i.test(String(type))) {\n        console.log(\"[eg] listener\", type, this === window ? \"window\" : this === document ? \"document\" : this);\n      }\n      return oAdd.call(this, type, fn, opt);\n    };\n  }\n\n  bag.dump = () => {\n    console.table(bag.urls.map((u) => ({ url: u })));\n    console.log(\"WS\", bag.ws);\n    console.log(\"son hit\", bag.hits.slice(0, 12));\n    try { copy(JSON.stringify({ urls: bag.urls, ws: bag.ws, hits: bag.hits.slice(0, 20) }, null, 2)); console.log(\"[eg] u\u00e7 listesi panoda\"); } catch (e) {}\n    return bag;\n  };\n  bag.copyTrades = () => {\n    try { copy(JSON.stringify(bag.trades.slice(0, 80), null, 2)); console.log(\"[eg] trade JSON panoda\"); } catch (e) {}\n    return bag.trades.length;\n  };\n\n  console.log(\"%c[eg] GMGN dinleyici tak\u0131l\u0131. Track/Follow sayfas\u0131n\u0131 YEN\u0130LE. U\u00e7lar console'da [eg] U\u00c7. dump: __egGmgn.dump()  trades: __egGmgn.copyTrades()\", \"color:#7dff8a\");\n  try {\n    const gl = typeof getEventListeners === \"function\" ? getEventListeners : null;\n    if (gl) {\n      console.log(\"[eg] window listeners\", Object.keys(gl(window) || {}));\n      console.log(\"[eg] document listeners\", Object.keys(gl(document) || {}));\n    }\n  } catch (e) {}\n  return bag;\n})();\n";
+/** Paste into the logged-in gmgn.ai Track tab console. Do not hard-reload after paste. */
+export const GMGN_SNIFF_JS = String.raw`(() => {
+  const EG = "https://earlygem-live.vercel.app";
+  const bag = (window.__egGmgn = window.__egGmgn || {
+    urls: [],
+    ws: [],
+    hits: [],
+    trades: [],
+    peeks: [],
+    peek: null,
+    wsMeta: null,
+  });
+  const seenTx = new Set((bag.trades || []).map((t) => t.tx || t.id).filter(Boolean));
+
+  function trackUrl(u) {
+    const s = String(u || "");
+    if (
+      /balances|holdings|twitter|analytics|google-analytics|\/g\/collect|batch_get|trade_config|get_coins|hybrid|is_bound|messages|business_group|wallet\/list|tapi\/v1\/wallet|list_wallet|walletNew|get_configs|get_groups/i.test(
+        s,
+      )
+    )
+      return false;
+    return /dex_trades_polling|follow_wallet|follow\/.*trade|wallet_activity|\/dex_trades(?:_|\b)/i.test(s);
+  }
+
+  function isPoll(u) {
+    return /dex_trades_polling/i.test(String(u || ""));
+  }
+
+  function chainOf(url, row) {
+    const s = String((row && (row.chain || row.network || row.chain_id)) || url || "").toLowerCase();
+    if (s.includes("sol")) return "solana";
+    if (s.includes("bsc") || s.includes("bnb")) return "bsc";
+    if (s.includes("base")) return "base";
+    if (s.includes("eth")) return "ethereum";
+    if (s.includes("robin") || s.includes("rh")) return "robinhood";
+    if (s.includes("monad")) return "monad";
+    return "solana";
+  }
+
+  function sideOf(row) {
+    const raw = row.side || row.event_type || row.eventType || row.event || row.trade_type || row.tradeType || row.action;
+    const s = String(raw == null ? "" : raw).toLowerCase();
+    if (s === "buy" || s === "1" || s === "buy_token") return "buy";
+    if (s === "sell" || s === "0" || s === "sell_token") return "sell";
+    return "";
+  }
+
+  function tokenOf(row) {
+    const tok = row.base_token || row.token || {};
+    const t =
+      row.base_address ||
+      row.token_address ||
+      row.tokenAddress ||
+      row.baseAddress ||
+      row.ca ||
+      tok.address ||
+      tok.token_address ||
+      tok.tokenAddress;
+    return t && typeof t === "string" ? t : "";
+  }
+
+  function asTrade(row, url) {
+    if (!row || typeof row !== "object") return null;
+    const side = sideOf(row);
+    if (side !== "buy" && side !== "sell") return null;
+    const token = tokenOf(row);
+    if (!token || token.length < 8) return null;
+    const tx = row.transaction_hash || row.tx_hash || row.txHash || row.tx || row.signature || row.hash;
+    const usd = Number(row.amount_usd || row.amountUsd || row.cost_usd || row.usd || row.volume_usd || 0);
+    if (!tx && usd <= 0) return null;
+    let ts = Number(row.timestamp || row.ts || row.block_time || row.blockTime || row.time || 0);
+    if (ts && ts < 10e9) ts *= 1000;
+    if (!ts) ts = Date.now();
+    const tok = row.base_token || row.token || {};
+    const maker =
+      row.maker ||
+      row.wallet_address ||
+      row.maker_address ||
+      row.trader ||
+      (row.maker_info && (row.maker_info.address || row.maker_info.wallet_address)) ||
+      row.wallet ||
+      "";
+    const info = row.maker_info || row.user || {};
+    const tags = info.tags || row.tags || [];
+    return {
+      id: "gmgn-live-" + (tx || token) + "-" + ts,
+      ts,
+      chain: chainOf(url, row),
+      side,
+      usd,
+      amount: Number(row.token_amount || row.base_amount || row.amount || 0),
+      price: Number(row.price_usd || row.priceUsd || row.price || 0) || null,
+      token: String(token),
+      symbol: String(tok.symbol || row.symbol || row.token_symbol || "???").trim(),
+      name: String(tok.name || tok.symbol || row.symbol || row.token_symbol || "???").trim(),
+      mcap: row.market_cap != null ? Number(row.market_cap) : row.mcap != null ? Number(row.mcap) : null,
+      liquidity: null,
+      change24: null,
+      pairUrl: null,
+      imageUrl: tok.logo || tok.logo_url || null,
+      wallet: maker ? String(maker) : null,
+      handle: info.twitter_username || info.name || row.name || (maker ? String(maker).slice(0, 8) : "wallet"),
+      followers: null,
+      profileUrl: info.twitter_username ? "https://x.com/" + info.twitter_username : null,
+      rank: null,
+      tx: tx ? String(tx) : null,
+      firstBuy: false,
+      flags: ["gmgn", "follow", "track"],
+      source: "dexscreener",
+      smartKind: (Array.isArray(tags) ? tags : []).some((x) => /kol|renowned/i.test(x)) ? "kol" : "smart",
+    };
+  }
+
+  function walk(node, url, out, depth) {
+    if (!node || depth > 7) return;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const t = asTrade(item, url);
+        if (t) out.push(t);
+        else walk(item, url, out, depth + 1);
+      }
+      return;
+    }
+    if (typeof node !== "object") return;
+    for (const k of [
+      "list",
+      "data",
+      "activities",
+      "trades",
+      "transactions",
+      "result",
+      "rows",
+      "records",
+      "items",
+      "fills",
+      "events",
+      "ticks",
+    ]) {
+      if (node[k]) walk(node[k], url, out, depth + 1);
+    }
+  }
+
+  function pick(body, url) {
+    let data = body;
+    if (typeof body === "string") {
+      try {
+        data = JSON.parse(body);
+      } catch {
+        return [];
+      }
+    }
+    const out = [];
+    walk(data, url, out, 0);
+    return out;
+  }
+
+  function snapshot(url, body) {
+    let data = body;
+    if (typeof body === "string") {
+      try {
+        data = JSON.parse(body);
+      } catch {
+        data = { raw: String(body).slice(0, 400) };
+      }
+    }
+    const keys = data && typeof data === "object" && !Array.isArray(data) ? Object.keys(data) : Array.isArray(data) ? ["<array:" + data.length + ">"] : [];
+    const inner = data && data.data;
+    const innerKeys =
+      inner && typeof inner === "object" && !Array.isArray(inner)
+        ? Object.keys(inner)
+        : Array.isArray(inner)
+          ? ["<array:" + inner.length + ">"]
+          : [];
+    const sample = String(typeof body === "string" ? body : JSON.stringify(body || "")).slice(0, 1800);
+    bag.peek = { url: String(url).slice(0, 220), keys, innerKeys, sample, n: sample.length };
+    bag.peeks = [bag.peek].concat(bag.peeks || []).slice(0, 8);
+    console.log("[eg] PEEK", bag.peek.url, "len", sample.length, "keys", keys, "data.keys", innerKeys);
+    if (isPoll(url) || sample.length > 40) console.log("[eg] SAMPLE", sample.slice(0, 1000));
+  }
+
+  function push(fills) {
+    if (!fills.length) return;
+    const fresh = [];
+    for (const f of fills) {
+      const k = f.tx || f.id;
+      if (k && seenTx.has(k)) continue;
+      if (k) seenTx.add(k);
+      fresh.push(f);
+    }
+    if (!fresh.length) return;
+    bag.trades = fresh.concat(bag.trades).slice(0, 500);
+    const msg = { type: "eg-gmgn-track", fills: fresh };
+    try {
+      if (window.opener) window.opener.postMessage(msg, EG);
+    } catch (e) {}
+    try {
+      const eg = window.open("", "earlygem");
+      if (eg && eg !== window) eg.postMessage(msg, EG);
+    } catch (e) {}
+    console.log("[eg] TRACK fill " + fresh.length + " · toplam " + bag.trades.length, fresh[0] && fresh[0].symbol);
+  }
+
+  function xhrBody(xhr) {
+    try {
+      if (xhr.responseType === "json" && xhr.response != null) {
+        return typeof xhr.response === "string" ? xhr.response : JSON.stringify(xhr.response);
+      }
+    } catch (e) {}
+    try {
+      return xhr.responseText;
+    } catch (e) {
+      try {
+        return JSON.stringify(xhr.response);
+      } catch (e2) {
+        return "";
+      }
+    }
+  }
+
+  function note(kind, url, body) {
+    const u = String(url || "");
+    bag.hits.unshift({ t: new Date().toISOString(), kind, url: u.slice(0, 220) });
+    bag.hits.splice(80);
+    const base = u.split("?")[0];
+    if (base && !bag.urls.includes(base)) bag.urls.push(base);
+    const interesting = trackUrl(u) || isPoll(u) || kind === "ws";
+    if (interesting) {
+      console.log("[eg] UÇ", kind, base || u.slice(0, 120), "bytes", String(body || "").length);
+      snapshot(u, body);
+    }
+    if (!trackUrl(u) && kind !== "ws") return;
+    try {
+      const fills = pick(body, u);
+      if (isPoll(u) && !fills.length) console.log("[eg] polling parse 0 — SAMPLE yukarıda, dump için __egGmgn.peek");
+      push(fills);
+    } catch (e) {
+      console.warn("[eg] parse", e);
+    }
+  }
+
+  function attachWs(ws, url) {
+    if (!ws || ws.__egAttached) return;
+    ws.__egAttached = true;
+    const u = String(url || ws.url || "");
+    if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
+    console.log("[eg] WS attach", u);
+    try {
+      ws.addEventListener("message", (ev) => note("ws", u, ev.data));
+    } catch (e) {}
+  }
+
+  function huntWs() {
+    const found = [];
+    try {
+      performance.getEntriesByType("resource").forEach((e) => {
+        if (/^wss?:/i.test(e.name) && found.indexOf(e.name) < 0) found.push(e.name);
+      });
+    } catch (e) {}
+    const webpackKeys = Object.keys(window).filter((k) => /webpackChunk/i.test(k));
+    const sockKeys = Object.getOwnPropertyNames(window).filter((k) => /socket|quotation|ws/i.test(k));
+    bag.wsMeta = { perf: found, webpackKeys, sockKeys };
+    found.forEach((u) => {
+      if (bag.ws.indexOf(u) < 0) bag.ws.push(u);
+    });
+    console.log("[eg] hunt WS", bag.wsMeta);
+  }
+
+  if (!window.__egGmgnHookedV3) {
+    window.__egGmgnHookedV3 = true;
+    const ofetch = window.fetch;
+    window.fetch = async function () {
+      const url = String(arguments[0] && arguments[0].url ? arguments[0].url : arguments[0]);
+      const res = await ofetch.apply(this, arguments);
+      try {
+        const copy = res.clone();
+        const ct = copy.headers.get("content-type") || "";
+        if (/json|text/i.test(ct)) copy.text().then((t) => note("fetch", url, t)).catch(() => {});
+        else note("fetch", url, "");
+      } catch (e) {}
+      return res;
+    };
+    const oxhr = XMLHttpRequest.prototype.open;
+    const osend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (m, u) {
+      this.__egUrl = u;
+      return oxhr.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function () {
+      this.addEventListener("load", () => note("xhr", this.__egUrl, xhrBody(this)));
+      return osend.apply(this, arguments);
+    };
+    const OWS = window.WebSocket;
+    window.WebSocket = function (url, proto) {
+      const ws = proto !== undefined ? new OWS(url, proto) : new OWS(url);
+      attachWs(ws, url);
+      return ws;
+    };
+    window.WebSocket.prototype = OWS.prototype;
+    window.WebSocket.OPEN = OWS.OPEN;
+    window.WebSocket.CLOSED = OWS.CLOSED;
+    window.WebSocket.CONNECTING = OWS.CONNECTING;
+    window.WebSocket.CLOSING = OWS.CLOSING;
+    const pSend = OWS.prototype.send;
+    OWS.prototype.send = function (data) {
+      attachWs(this, this.url);
+      return pSend.call(this, data);
+    };
+    try {
+      const desc = Object.getOwnPropertyDescriptor(OWS.prototype, "onmessage");
+      if (desc && desc.set) {
+        Object.defineProperty(OWS.prototype, "onmessage", {
+          configurable: true,
+          enumerable: desc.enumerable,
+          get: desc.get,
+          set: function (fn) {
+            attachWs(this, this.url);
+            return desc.set.call(this, fn);
+          },
+        });
+      }
+    } catch (e) {}
+    const oAdd = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function (type, fn, opt) {
+      if (String(type) === "message" && this && this.url && /wss?:/i.test(String(this.url))) attachWs(this, this.url);
+      return oAdd.call(this, type, fn, opt);
+    };
+    const olog = console.log;
+    console.log = function () {
+      try {
+        const s = Array.prototype.map
+          .call(arguments, (a) => (typeof a === "string" ? a : ""))
+          .join(" ");
+        if (/QuotationSocketMgr|websocket opened/i.test(s)) {
+          olog.call(console, "[eg] SOCKET LOG", s.slice(0, 160));
+          huntWs();
+        }
+      } catch (e) {}
+      return olog.apply(console, arguments);
+    };
+  }
+
+  bag.dump = () => {
+    huntWs();
+    console.log("URLS", bag.urls);
+    console.log("WS", bag.ws, bag.wsMeta);
+    console.log("PEEK", bag.peek);
+    console.log("PEEKS", bag.peeks);
+    console.log("TRADES", bag.trades.length);
+    return {
+      urls: bag.urls,
+      ws: bag.ws,
+      wsMeta: bag.wsMeta,
+      peek: bag.peek,
+      peeks: bag.peeks,
+      hits: bag.hits.slice(0, 20),
+      trades: bag.trades.length,
+    };
+  };
+  bag.copyTrades = () => {
+    try {
+      copy(JSON.stringify(bag.trades.slice(0, 80), null, 2));
+      console.log("[eg] trade JSON panoda");
+    } catch (e) {
+      console.log("[eg] copy yok — __egGmgn.trades");
+    }
+    return bag.trades.length;
+  };
+
+  huntWs();
+  console.log("[eg] v3 takıldı — Track'i YENİLEME. 8-15 sn bekle.");
+  console.log("[eg] sonra: __egGmgn.dump()   peek: __egGmgn.peek   trades: __egGmgn.copyTrades()");
+  return bag;
+})();
+`;
