@@ -1,3 +1,4 @@
+import { markSource } from "./health";
 import { ingestPool } from "./pool";
 import { logEvent } from "./log";
 import type { ChainId, SmartKind, TapeFill } from "./types";
@@ -64,16 +65,18 @@ export function ingestGmgnTrackPayload(raw: unknown) {
   const fills = rows.map((r) => (r && typeof r === "object" ? asFill(r as Record<string, unknown>) : null)).filter(Boolean) as TapeFill[];
   if (!fills.length) return 0;
   ingestPool(fills, WINDOW_MIN);
+  const buys = fills.filter((f) => f.side === "buy").length;
   logEvent({
     level: "info",
     event: "gmgn_follow",
     outcome: "ok",
     source: "gmgn",
-    count: fills.length,
-    detail: `track köprü ${fills.length} fill`,
+    count: buys,
+    detail: `track köprü ${buys} buy / ${fills.length} fill`,
   });
+  if (buys > 0) markSource("gmgn_follow", true, buys);
   window.dispatchEvent(new Event("eg-gmgn-track"));
-  return fills.length;
+  return buys;
 }
 
 let hooked = false;
@@ -85,6 +88,12 @@ export function installGmgnTrackBridge() {
     if (!EG_ORIGINS.has(ev.origin)) return;
     const data = ev.data as { type?: string; fills?: unknown };
     if (data?.type !== "eg-gmgn-track") return;
-    ingestGmgnTrackPayload(data.fills);
+    const buys = ingestGmgnTrackPayload(data.fills);
+    try {
+      const src = ev.source as Window | null;
+      if (src) src.postMessage({ type: "eg-gmgn-track-ack", count: buys }, ev.origin);
+    } catch {
+      /* gmgn may already have navigated */
+    }
   });
 }

@@ -161,6 +161,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     }, 30_000);
     const onKeys = () => {
       const tape = readPool(WINDOW_MIN);
+      setBundle((prev) => (prev ? withTape(prev, tape) : prev));
       if (tape.length) void refreshMcaps(tape).then((next) => setBundle((prev) => (prev ? withTape(prev, next) : prev)));
     };
     window.addEventListener("eg-keys", onKeys);

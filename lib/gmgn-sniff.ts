@@ -102,6 +102,40 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     };
   }
 
+  function postEg(msg) {
+    var sent = false;
+    function shoot(win) {
+      if (!win || win === window) return false;
+      try {
+        win.postMessage(msg, "*");
+        try { win.postMessage(msg, EG); } catch (e0) {}
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+    try {
+      if (shoot(window.opener)) sent = true;
+    } catch (e) {}
+    if (!sent) {
+      try {
+        sent = shoot(window.open("", "earlygem"));
+      } catch (e2) {}
+    }
+    bag.posted = sent;
+    return sent;
+  }
+
+  if (!window.__egAckHook) {
+    window.__egAckHook = true;
+    window.addEventListener("message", function (ev) {
+      if (!ev.data || ev.data.type !== "eg-gmgn-track-ack") return;
+      bag.acked = ev.data.count;
+      console.log("[eg] radar ack", ev.data.count, "buy");
+      banner("TRACK radar OK · " + ev.data.count + " buy havuza");
+    });
+  }
+
   function push(fills) {
     if (!fills || !fills.length) return;
     const fresh = [];
@@ -115,16 +149,13 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     if (!fresh.length) return;
     bag.trades = fresh.concat(bag.trades).slice(0, 500);
     const msg = { type: "eg-gmgn-track", fills: fresh };
-    try {
-      if (window.opener) window.opener.postMessage(msg, EG);
-    } catch (e) {}
-    try {
-      const eg = window.open("", "earlygem");
-      if (eg && eg !== window) eg.postMessage(msg, EG);
-    } catch (e) {}
+    const posted = postEg(msg);
+    const buys = fresh.filter(function (f) { return f.side === "buy"; }).length;
     const line =
       "[eg] TRACK fill " +
       fresh.length +
+      " · buy " +
+      buys +
       " · toplam " +
       bag.trades.length +
       " · " +
@@ -132,7 +163,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
       " " +
       (fresh[0].side || "") +
       " $" +
-      Math.round(fresh[0].usd || 0);
+      Math.round(fresh[0].usd || 0) +
+      (posted ? " · posted" : " · NO TARGET — earlygem'i bu tarayicida ac, Track'i admin'den ac");
     console.log(line, fresh[0] && fresh[0].token);
     banner(line + "\n" + (fresh[0].token || "") + "\n" + (fresh[0].tx || ""));
   }
@@ -246,11 +278,11 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
   }
 
   function attachFollow(ws, url) {
-    if (!ws || ws.__egFollow) return;
-    ws.__egFollow = true;
+    if (!ws || ws.__egFollow51) return;
+    ws.__egFollow51 = true;
     const u = shortUrl(url || ws.url || "");
     if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
-    console.log("[eg] v5 follow attach", u || "ws");
+    console.log("[eg] v5.1 follow attach", u || "ws");
     try {
       ws.addEventListener("message", function (ev) {
         ingestWs(ev.data);
@@ -260,8 +292,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
 
   const OWS = window.WebSocket;
   const pSend = OWS.prototype.send;
-  if (!window.__egGmgnHookedV5) {
-    window.__egGmgnHookedV5 = true;
+  if (!window.__egGmgnHookedV51) {
+    window.__egGmgnHookedV51 = true;
     OWS.prototype.send = function (data) {
       attachFollow(this, this.url);
       return pSend.call(this, data);
@@ -328,6 +360,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     const payload = {
       urls: bag.urls,
       ws: bag.ws,
+      posted: bag.posted || false,
+      acked: bag.acked == null ? null : bag.acked,
       tradeCount: bag.trades.length,
       trades: bag.trades.slice(0, 40),
     };
@@ -339,8 +373,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     return json;
   };
 
-  banner("v5 takildi — Track YENILEME. Fill gelince sari kutu TRACK yazar.");
-  console.log("[eg] v5 takildi — YENILEME. following_wallet_activity bekleniyor");
-  return "[eg] v5 — Track yenileme, fill gelince sari kutu TRACK yazar";
+  banner("v5.1 takildi — Track YENILEME. Buy fill radar'a; sari kutu radar OK yazmali.");
+  console.log("[eg] v5.1 takildi — YENILEME. buy fill + radar ack bekleniyor");
+  return "[eg] v5.1 — Track yenileme, buy fill gelince radar OK";
 })();
 `;
