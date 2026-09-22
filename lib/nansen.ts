@@ -3,7 +3,7 @@ import { loadClientKeys } from "./client-keys";
 import { markSource } from "./health";
 import { logEvent, logHttpFailure } from "./log";
 import { persistGet, persistSet } from "./persist";
-import { isEvmWallet, isSolWallet } from "./watchlist";
+import { isEvmWallet, isSolWallet, walletId } from "./watchlist";
 import type { ChainId, TapeFill, Trader } from "./types";
 
 const STORE = "eg_nansen_smart_v2";
@@ -265,9 +265,9 @@ export async function pullNansenSmart(opts?: { force?: boolean }): Promise<{
       const fill = fillOf(row);
       if (fill) fills.push(fill);
       const chain = chainFromNansen(row.chain);
-      const address = row.trader_address || "";
+      const address = chain === "solana" ? row.trader_address || "" : (row.trader_address || "").toLowerCase();
       if (!chain || !isWalletOn(chain, address)) continue;
-      const k = `${chain}:${address.toLowerCase()}`;
+      const k = walletId(chain, address);
       if (seen.has(k)) continue;
       seen.add(k);
       wallets.push({

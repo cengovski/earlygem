@@ -11,6 +11,43 @@ export function isEvmWallet(raw: string) {
   return /^0x[a-fA-F0-9]{40}$/.test(raw.trim());
 }
 
+export function walletId(chain: string, address: string) {
+  const addr = address.trim();
+  if (chain === "solana") return `solana:${addr}`;
+  return `${chain}:${addr.toLowerCase()}`;
+}
+
+export function traderWalletId(t: Trader) {
+  const chain = t.smartReasons.find((s) => s.startsWith("chain:"))?.slice(6);
+  if (t.solana) return walletId("solana", t.solana);
+  if (t.address) return walletId(chain || "evm", t.address);
+  return `h:${t.handle.toLowerCase()}`;
+}
+
+/** Same chain+address once. Nansen label wins over a pasted stub. */
+export function mergeFollow(a: Trader[], b: Trader[]) {
+  const map = new Map<string, Trader>();
+  for (const t of [...a, ...b]) {
+    const k = traderWalletId(t);
+    const prev = map.get(k);
+    if (!prev) {
+      map.set(k, { ...t, smartReasons: [...t.smartReasons] });
+      continue;
+    }
+    const nansen = t.smartReasons.includes("src:nansen");
+    if (nansen) {
+      prev.handle = t.handle || prev.handle;
+      prev.displayName = t.displayName || prev.displayName;
+      prev.profileUrl = t.profileUrl || prev.profileUrl;
+      prev.smartScore = Math.max(prev.smartScore, t.smartScore);
+    }
+    prev.solana = prev.solana || t.solana;
+    prev.address = prev.address || t.address;
+    prev.smartReasons = [...new Set([...prev.smartReasons, ...t.smartReasons])];
+  }
+  return [...map.values()];
+}
+
 export function parseWatchSol(raw?: string) {
   const text = raw || loadClientKeys().watchSol || process.env.WATCH_SOL || "";
   const out: string[] = [];
