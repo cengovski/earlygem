@@ -292,7 +292,7 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
     pullNansenSmart(),
   ]);
   const watch = mergeFollow(watchTraders(), nansen.traders);
-  const follow = await fetchGmgnWalletTape(mergeTraders(watch, gmgnParts.flatMap((p) => p.traders)));
+  const follow = await fetchGmgnWalletTape(watch);
   const traders = mergeTraders(
     watch,
     [...gmgnParts.flatMap((p) => p.traders), ...pump, ...bn.traders, ...extra.traders],

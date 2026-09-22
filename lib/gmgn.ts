@@ -1,11 +1,12 @@
 import { traderSourceFlags } from "./alert-msg";
 import { gmgnLaneKeys } from "./client-keys";
-import { logHttpFailure } from "./log";
+import { logEvent, logHttpFailure } from "./log";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const HOST = "https://openapi.gmgn.ai";
 const MIN_GAP_MS = 800;
-const MAX_JOBS = 3;
+/** wallet_activity jobs per 25s tick. Nansen-only queue; 217 wallets ≈ 11 dk/tur. */
+const FOLLOW_JOBS = 8;
 const MIN_USD = 8;
 const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 const STOCK = /^(googlb?|gmeb?|qqqb?|nvdab?|tslab?|aaplb?|msftb?|metab?|amznb?|gstock|sndk|qqq|spy|iwm)$/i;
@@ -219,13 +220,15 @@ function followChainOf(trader: Trader): ChainId | null {
 }
 
 function planJobs(traders: Trader[]): Job[] {
-  const bag: Job[] = [];
+  const groups = new Map<ChainId, Job[]>();
   const seen = new Set<string>();
   const push = (job: Job) => {
     const k = `${job.chain}:${job.wallet.toLowerCase()}`;
     if (seen.has(k)) return;
     seen.add(k);
+    const bag = groups.get(job.chain) || [];
     bag.push(job);
+    groups.set(job.chain, bag);
   };
   for (const trader of traders) {
     const chain = followChainOf(trader);
@@ -233,18 +236,26 @@ function planJobs(traders: Trader[]): Job[] {
     else if (chain && trader.address) push({ chain, wallet: trader.address, trader });
     else if (trader.solana) push({ chain: "solana", wallet: trader.solana, trader });
   }
-  if (!bag.length) {
+  if (!groups.size) {
     const extra = GMGN_FOMO_EVM[evmCursor % GMGN_FOMO_EVM.length];
     evmCursor += 1;
     for (const trader of traders) {
       if (trader.address) push({ chain: extra, wallet: trader.address, trader });
     }
   }
+  const columns = [...groups.values()];
+  const bag: Job[] = [];
+  const depth = Math.max(0, ...columns.map((c) => c.length));
+  for (let i = 0; i < depth; i++) {
+    for (const col of columns) {
+      if (col[i]) bag.push(col[i]);
+    }
+  }
   const jobs: Job[] = [];
   if (!bag.length) return jobs;
   const start = watchCursor % bag.length;
-  watchCursor += MAX_JOBS;
-  for (let i = 0; i < bag.length && jobs.length < MAX_JOBS; i++) jobs.push(bag[(start + i) % bag.length]);
+  watchCursor += FOLLOW_JOBS;
+  for (let i = 0; i < bag.length && jobs.length < FOLLOW_JOBS; i++) jobs.push(bag[(start + i) % bag.length]);
   return jobs;
 }
 
@@ -252,6 +263,14 @@ export async function fetchGmgnWalletTape(traders: Trader[]): Promise<TapeFill[]
   if (!gmgnConfigured()) return [];
   const jobs = planJobs(traders);
   if (!jobs.length) return [];
+  logEvent({
+    level: "info",
+    event: "gmgn_follow",
+    outcome: "ok",
+    source: "gmgn",
+    count: jobs.length,
+    detail: `wallet_activity ${jobs.length} · kuyruk ${traders.length}`,
+  });
   const out: TapeFill[] = [];
   for (const job of jobs) {
     const slug = gmgnSlug(job.chain);
