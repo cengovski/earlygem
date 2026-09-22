@@ -14,6 +14,10 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
   });
   const seenTx = new Set((bag.trades || []).map((t) => t.tx || t.id).filter(Boolean));
 
+  function shortUrl(u) {
+    return String(u || "").split("?")[0];
+  }
+
   function pageCopy(text) {
     try {
       const ta = document.createElement("textarea");
@@ -42,23 +46,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     el.textContent = String(text || "");
   }
 
-  function trackUrl(u) {
-    const s = String(u || "");
-    if (
-      /balances|holdings|twitter|analytics|google-analytics|\/g\/collect|batch_get|trade_config|get_coins|hybrid|is_bound|messages|business_group|wallet\/list|tapi\/v1\/wallet|list_wallet|walletNew|get_configs|get_groups/i.test(
-        s,
-      )
-    )
-      return false;
-    return /dex_trades_polling|follow_wallet|follow\/.*trade|wallet_activity|\/dex_trades(?:_|\b)/i.test(s);
-  }
-
-  function isPoll(u) {
-    return /dex_trades_polling/i.test(String(u || ""));
-  }
-
-  function chainOf(url, row) {
-    const s = String((row && (row.chain || row.network || row.chain_id)) || url || "").toLowerCase();
+  function chainOf(row, url) {
+    const s = String((row && (row.n || row.chain || row.network || row.chain_id)) || url || "").toLowerCase();
     if (s.includes("sol")) return "solana";
     if (s.includes("bsc") || s.includes("bnb")) return "bsc";
     if (s.includes("base")) return "base";
@@ -68,148 +57,56 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     return "solana";
   }
 
-  function sideOf(row) {
-    const raw = row.side || row.event_type || row.eventType || row.event || row.trade_type || row.tradeType || row.action;
-    const s = String(raw == null ? "" : raw).toLowerCase();
-    if (s === "buy" || s === "1" || s === "buy_token") return "buy";
-    if (s === "sell" || s === "0" || s === "sell_token") return "sell";
-    return "";
-  }
-
-  function tokenOf(row) {
-    const tok = row.base_token || row.token || {};
-    const t =
-      row.base_address ||
-      row.token_address ||
-      row.tokenAddress ||
-      row.baseAddress ||
-      row.ca ||
-      tok.address ||
-      tok.token_address ||
-      tok.tokenAddress;
-    return t && typeof t === "string" ? t : "";
-  }
-
-  function asTrade(row, url) {
+  function asFollowTrade(row) {
     if (!row || typeof row !== "object") return null;
-    const side = sideOf(row);
+    const side = String(row.s || row.side || "").toLowerCase();
     if (side !== "buy" && side !== "sell") return null;
-    const token = tokenOf(row);
-    if (!token || token.length < 8) return null;
-    const tx = row.transaction_hash || row.tx_hash || row.txHash || row.tx || row.signature || row.hash;
-    const usd = Number(row.amount_usd || row.amountUsd || row.cost_usd || row.usd || row.volume_usd || 0);
+    const token = row.a || row.ba || row.token_address || row.token || "";
+    if (!token || String(token).length < 8) return null;
+    const tx = row.h || row.tx || row.signature || row.hash || "";
+    const usd = Number(row.au || row.cu || row.amount_usd || row.usd || 0);
     if (!tx && usd <= 0) return null;
-    let ts = Number(row.timestamp || row.ts || row.block_time || row.blockTime || row.time || 0);
+    let ts = Number(row.ts || row.timestamp || 0);
     if (ts && ts < 10e9) ts *= 1000;
     if (!ts) ts = Date.now();
-    const tok = row.base_token || row.token || {};
-    const maker =
-      row.maker ||
-      row.wallet_address ||
-      row.maker_address ||
-      row.trader ||
-      (row.maker_info && (row.maker_info.address || row.maker_info.wallet_address)) ||
-      row.wallet ||
-      "";
-    const info = row.maker_info || row.user || {};
-    const tags = info.tags || row.tags || [];
+    const maker = row.m || row.ma || row.maker || "";
+    const tags = Array.isArray(row.t) ? row.t : [];
+    const handle = row.nm || row.tun || row.un || (maker ? String(maker).slice(0, 8) : "wallet");
     return {
       id: "gmgn-live-" + (tx || token) + "-" + ts,
-      ts,
-      chain: chainOf(url, row),
-      side,
-      usd,
-      amount: Number(row.token_amount || row.base_amount || row.amount || 0),
-      price: Number(row.price_usd || row.priceUsd || row.price || 0) || null,
+      ts: ts,
+      chain: chainOf(row, ""),
+      side: side,
+      usd: usd,
+      amount: Number(row.ta || row.token_amount || row.amount || 0),
+      price: Number(row.pu || row.price_usd || row.price || 0) || null,
       token: String(token),
-      symbol: String(tok.symbol || row.symbol || row.token_symbol || "???").trim(),
-      name: String(tok.name || tok.symbol || row.symbol || row.token_symbol || "???").trim(),
-      mcap: row.market_cap != null ? Number(row.market_cap) : row.mcap != null ? Number(row.mcap) : null,
+      symbol: String(row.bs || row.symbol || "???").trim(),
+      name: String(row.tn || row.bs || row.symbol || "???").trim(),
+      mcap: null,
       liquidity: null,
       change24: null,
       pairUrl: null,
-      imageUrl: tok.logo || tok.logo_url || null,
+      imageUrl: row.bl || row.avatar || null,
       wallet: maker ? String(maker) : null,
-      handle: info.twitter_username || info.name || row.name || (maker ? String(maker).slice(0, 8) : "wallet"),
-      followers: null,
-      profileUrl: info.twitter_username ? "https://x.com/" + info.twitter_username : null,
+      handle: String(handle),
+      followers: row.fc != null ? Number(row.fc) : null,
+      profileUrl: row.tun ? "https://x.com/" + row.tun : null,
       rank: null,
       tx: tx ? String(tx) : null,
       firstBuy: false,
       flags: ["gmgn", "follow", "track"],
       source: "dexscreener",
-      smartKind: (Array.isArray(tags) ? tags : []).some((x) => /kol|renowned/i.test(x)) ? "kol" : "smart",
+      smartKind: tags.some(function (x) { return /kol|renowned/i.test(String(x)); }) ? "kol" : "smart",
+      venue: row.tlp || row.tl || null,
     };
   }
 
-  function walk(node, url, out, depth) {
-    if (!node || depth > 7) return;
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const t = asTrade(item, url);
-        if (t) out.push(t);
-        else walk(item, url, out, depth + 1);
-      }
-      return;
-    }
-    if (typeof node !== "object") return;
-    for (const k of ["list", "data", "activities", "trades", "transactions", "result", "rows", "records", "items", "fills", "events", "ticks"]) {
-      if (node[k]) walk(node[k], url, out, depth + 1);
-    }
-  }
-
-  function pick(body, url) {
-    let data = body;
-    if (typeof body === "string") {
-      try {
-        data = JSON.parse(body);
-      } catch {
-        return [];
-      }
-    }
-    const out = [];
-    walk(data, url, out, 0);
-    return out;
-  }
-
-  function snapshot(url, body) {
-    let data = body;
-    if (typeof body === "string") {
-      try {
-        data = JSON.parse(body);
-      } catch {
-        data = { raw: String(body).slice(0, 400) };
-      }
-    }
-    const keys =
-      data && typeof data === "object" && !Array.isArray(data)
-        ? Object.keys(data)
-        : Array.isArray(data)
-          ? ["<array:" + data.length + ">"]
-          : [];
-    const inner = data && data.data;
-    const innerKeys =
-      inner && typeof inner === "object" && !Array.isArray(inner)
-        ? Object.keys(inner)
-        : Array.isArray(inner)
-          ? ["<array:" + inner.length + ">"]
-          : [];
-    const sample = String(typeof body === "string" ? body : JSON.stringify(body || "")).slice(0, 2500);
-    bag.peek = { url: String(url).slice(0, 220), keys, innerKeys, sample, n: sample.length };
-    bag.peeks = [bag.peek].concat(bag.peeks || []).slice(0, 8);
-    console.log("[eg] PEEK", bag.peek.url, "len", sample.length, "keys", keys, "data.keys", innerKeys);
-    if (isPoll(url) || sample.length > 40) {
-      console.log("[eg] PEEK JSON (bunu earlygem sohbetine yapistir)");
-      console.log(JSON.stringify(bag.peek));
-      pageCopy(JSON.stringify(bag.peek));
-      banner("PEEK " + sample.length + " byte\nkeys " + keys.join(",") + "\n" + sample.slice(0, 900) + "\n\nJSON panoda — earlygem sohbetine yapistir");
-    }
-  }
-
   function push(fills) {
-    if (!fills.length) return;
+    if (!fills || !fills.length) return;
     const fresh = [];
-    for (const f of fills) {
+    for (var i = 0; i < fills.length; i++) {
+      const f = fills[i];
       const k = f.tx || f.id;
       if (k && seenTx.has(k)) continue;
       if (k) seenTx.add(k);
@@ -225,7 +122,94 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
       const eg = window.open("", "earlygem");
       if (eg && eg !== window) eg.postMessage(msg, EG);
     } catch (e) {}
-    console.log("[eg] TRACK fill " + fresh.length + " · toplam " + bag.trades.length, fresh[0] && fresh[0].symbol);
+    const line =
+      "[eg] TRACK fill " +
+      fresh.length +
+      " · toplam " +
+      bag.trades.length +
+      " · " +
+      (fresh[0].symbol || "") +
+      " " +
+      (fresh[0].side || "") +
+      " $" +
+      Math.round(fresh[0].usd || 0);
+    console.log(line, fresh[0] && fresh[0].token);
+    banner(line + "\n" + (fresh[0].token || "") + "\n" + (fresh[0].tx || ""));
+  }
+
+  function ingestWs(body) {
+    var data = body;
+    if (typeof body === "string") {
+      try {
+        data = JSON.parse(body);
+      } catch (e) {
+        return;
+      }
+    }
+    if (!data || typeof data !== "object") return;
+    if (data.channel !== "following_wallet_activity") return;
+    const rows = Array.isArray(data.data) ? data.data : [];
+    const fills = [];
+    for (var i = 0; i < rows.length; i++) {
+      const t = asFollowTrade(rows[i]);
+      if (t) fills.push(t);
+    }
+    if (fills.length) push(fills);
+  }
+
+  function isPoll(u) {
+    return /dex_trades_polling/i.test(String(u || ""));
+  }
+
+  function trackUrl(u) {
+    const s = String(u || "");
+    if (
+      /balances|holdings|twitter|analytics|google-analytics|\/g\/collect|batch_get|trade_config|get_coins|hybrid|is_bound|messages|business_group|wallet\/list|tapi\/v1\/wallet|list_wallet|walletNew|get_configs|get_groups/i.test(
+        s,
+      )
+    )
+      return false;
+    return /dex_trades_polling|follow_wallet|follow\/.*trade|wallet_activity|\/dex_trades(?:_|\b)/i.test(s);
+  }
+
+  function asTrade(row, url) {
+    const t = asFollowTrade(row);
+    if (t) {
+      t.chain = chainOf(row, url);
+      return t;
+    }
+    return null;
+  }
+
+  function walk(node, url, out, depth) {
+    if (!node || depth > 7) return;
+    if (Array.isArray(node)) {
+      for (var i = 0; i < node.length; i++) {
+        const t = asTrade(node[i], url);
+        if (t) out.push(t);
+        else walk(node[i], url, out, depth + 1);
+      }
+      return;
+    }
+    if (typeof node !== "object") return;
+    const keys = ["list", "data", "activities", "trades", "transactions", "result", "rows", "records", "items", "fills", "events", "ticks"];
+    for (var k = 0; k < keys.length; k++) {
+      if (node[keys[k]]) walk(node[keys[k]], url, out, depth + 1);
+    }
+  }
+
+  function pick(body, url) {
+    var data = body;
+    if (typeof body === "string") {
+      try {
+        data = JSON.parse(body);
+      } catch (e) {
+        return [];
+      }
+    }
+    const out = [];
+    walk(data, url, out, 0);
+    return out;
   }
 
   function xhrBody(xhr) {
@@ -245,72 +229,71 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     }
   }
 
-  function note(kind, url, body) {
+  function noteHttp(kind, url, body) {
     const u = String(url || "");
-    bag.hits.unshift({ t: new Date().toISOString(), kind, url: u.slice(0, 220) });
+    bag.hits.unshift({ t: new Date().toISOString(), kind: kind, url: shortUrl(u) });
     bag.hits.splice(80);
-    const base = u.split("?")[0];
-    if (base && !bag.urls.includes(base)) bag.urls.push(base);
-    const interesting = trackUrl(u) || isPoll(u) || kind === "ws";
-    if (interesting) {
-      console.log("[eg] UC", kind, base || u.slice(0, 120), "bytes", String(body || "").length);
-      snapshot(u, body);
-    }
-    if (!trackUrl(u) && kind !== "ws") return;
+    const base = shortUrl(u);
+    if (base && bag.urls.indexOf(base) < 0) bag.urls.push(base);
+    if (!trackUrl(u)) return;
     try {
       const fills = pick(body, u);
-      if (isPoll(u) && !fills.length) console.log("[eg] polling parse 0 — sari kutudaki JSON yeter");
+      if (isPoll(u) && fills.length) console.log("[eg] polling fill", fills.length);
       push(fills);
     } catch (e) {
       console.warn("[eg] parse", e);
     }
   }
 
-  function attachWs(ws, url) {
-    if (!ws || ws.__egAttached) return;
-    ws.__egAttached = true;
-    const u = String(url || ws.url || "");
+  function attachFollow(ws, url) {
+    if (!ws || ws.__egFollow) return;
+    ws.__egFollow = true;
+    const u = shortUrl(url || ws.url || "");
     if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
-    console.log("[eg] WS attach", u);
+    console.log("[eg] v5 follow attach", u || "ws");
     try {
       ws.addEventListener("message", function (ev) {
-        note("ws", u, ev.data);
+        ingestWs(ev.data);
       });
     } catch (e) {}
   }
 
-  function huntWs() {
-    const found = [];
-    try {
-      performance.getEntriesByType("resource").forEach(function (e) {
-        if (/^wss?:/i.test(e.name) && found.indexOf(e.name) < 0) found.push(e.name);
-      });
-    } catch (e) {}
-    bag.wsMeta = {
-      perf: found,
-      webpackKeys: Object.keys(window).filter(function (k) {
-        return /webpackChunk/i.test(k);
-      }),
-      sockKeys: Object.getOwnPropertyNames(window).filter(function (k) {
-        return /socket|quotation|ws/i.test(k);
-      }),
+  const OWS = window.WebSocket;
+  const pSend = OWS.prototype.send;
+  if (!window.__egGmgnHookedV5) {
+    window.__egGmgnHookedV5 = true;
+    OWS.prototype.send = function (data) {
+      attachFollow(this, this.url);
+      return pSend.call(this, data);
     };
-    found.forEach(function (u) {
-      if (bag.ws.indexOf(u) < 0) bag.ws.push(u);
-    });
+    try {
+      const desc = Object.getOwnPropertyDescriptor(OWS.prototype, "onmessage");
+      if (desc && desc.set) {
+        Object.defineProperty(OWS.prototype, "onmessage", {
+          configurable: true,
+          enumerable: desc.enumerable,
+          get: desc.get,
+          set: function (fn) {
+            attachFollow(this, this.url);
+            return desc.set.call(this, fn);
+          },
+        });
+      }
+    } catch (e) {}
   }
 
-  if (!window.__egGmgnHookedV4) {
-    window.__egGmgnHookedV4 = true;
+  if (!window.__egGmgnHookedV5http) {
+    window.__egGmgnHookedV5http = true;
     const ofetch = window.fetch;
     window.fetch = async function () {
       const url = String(arguments[0] && arguments[0].url ? arguments[0].url : arguments[0]);
       const res = await ofetch.apply(this, arguments);
       try {
-        const copy = res.clone();
-        const ct = copy.headers.get("content-type") || "";
-        if (/json|text/i.test(ct)) copy.text().then(function (t) { note("fetch", url, t); }).catch(function () {});
-        else note("fetch", url, "");
+        if (trackUrl(url)) {
+          const copy = res.clone();
+          const ct = copy.headers.get("content-type") || "";
+          if (/json|text/i.test(ct)) copy.text().then(function (t) { noteHttp("fetch", url, t); }).catch(function () {});
+        }
       } catch (e) {}
       return res;
     };
@@ -322,85 +305,42 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     };
     XMLHttpRequest.prototype.send = function () {
       this.addEventListener("load", function () {
-        note("xhr", this.__egUrl, xhrBody(this));
+        if (trackUrl(this.__egUrl)) noteHttp("xhr", this.__egUrl, xhrBody(this));
       });
       return osend.apply(this, arguments);
     };
-    const OWS = window.WebSocket;
-    window.WebSocket = function (url, proto) {
-      const ws = proto !== undefined ? new OWS(url, proto) : new OWS(url);
-      attachWs(ws, url);
-      return ws;
-    };
-    window.WebSocket.prototype = OWS.prototype;
-    window.WebSocket.OPEN = OWS.OPEN;
-    window.WebSocket.CLOSED = OWS.CLOSED;
-    window.WebSocket.CONNECTING = OWS.CONNECTING;
-    window.WebSocket.CLOSING = OWS.CLOSING;
-    const pSend = OWS.prototype.send;
-    OWS.prototype.send = function (data) {
-      attachWs(this, this.url);
-      return pSend.call(this, data);
-    };
-    try {
-      const desc = Object.getOwnPropertyDescriptor(OWS.prototype, "onmessage");
-      if (desc && desc.set) {
-        Object.defineProperty(OWS.prototype, "onmessage", {
-          configurable: true,
-          enumerable: desc.enumerable,
-          get: desc.get,
-          set: function (fn) {
-            attachWs(this, this.url);
-            return desc.set.call(this, fn);
-          },
-        });
-      }
-    } catch (e) {}
-    const oAdd = EventTarget.prototype.addEventListener;
-    EventTarget.prototype.addEventListener = function (type, fn, opt) {
-      if (String(type) === "message" && this && this.url && /wss?:/i.test(String(this.url))) attachWs(this, this.url);
-      return oAdd.call(this, type, fn, opt);
-    };
-    const olog = console.log;
-    console.log = function () {
-      try {
-        const s = Array.prototype.map
-          .call(arguments, function (a) {
-            return typeof a === "string" ? a : "";
-          })
-          .join(" ");
-        if (/QuotationSocketMgr|websocket opened/i.test(s)) {
-          olog.call(console, "[eg] SOCKET LOG", s.slice(0, 160));
-          huntWs();
-        }
-      } catch (e) {}
-      return olog.apply(console, arguments);
-    };
+    if (!window.__egGmgnHookedV4) {
+      const Ctor = window.WebSocket;
+      window.WebSocket = function (url, proto) {
+        const ws = proto !== undefined ? new Ctor(url, proto) : new Ctor(url);
+        attachFollow(ws, url);
+        return ws;
+      };
+      window.WebSocket.prototype = Ctor.prototype;
+      window.WebSocket.OPEN = Ctor.OPEN;
+      window.WebSocket.CLOSED = Ctor.CLOSED;
+      window.WebSocket.CONNECTING = Ctor.CONNECTING;
+      window.WebSocket.CLOSING = Ctor.CLOSING;
+    }
   }
 
   bag.dump = function () {
-    huntWs();
     const payload = {
       urls: bag.urls,
       ws: bag.ws,
-      wsMeta: bag.wsMeta,
-      peek: bag.peek,
-      peeks: bag.peeks,
-      hits: bag.hits.slice(0, 20),
       tradeCount: bag.trades.length,
       trades: bag.trades.slice(0, 40),
     };
     const json = JSON.stringify(payload);
-    console.log("[eg] DUMP JSON (bunu earlygem sohbetine yapistir)");
+    console.log("[eg] DUMP", bag.trades.length, "trades");
     console.log(json);
     pageCopy(json);
-    banner("DUMP " + json.length + " byte · peek " + (bag.peek && bag.peek.n) + " · trades " + bag.trades.length + "\nJSON panoda");
+    banner("DUMP " + bag.trades.length + " trade · JSON panoda");
     return json;
   };
 
-  huntWs();
-  banner("v4 takildi — Track YENILEME. 10 sn bekle, sari kutu gelsin, JSON'u earlygem'e yapistir.");
-  console.log("[eg] v4 takildi — YENILEME. 10 sn sonra sari kutu veya __egGmgn.dump()");
-  return "[eg] v4 — 10sn bekle, sari kutudaki JSON'u earlygem sohbetine yapistir (kodu degil)";
+  banner("v5 takildi — Track YENILEME. Fill gelince sari kutu TRACK yazar.");
+  console.log("[eg] v5 takildi — YENILEME. following_wallet_activity bekleniyor");
+  return "[eg] v5 — Track yenileme, fill gelince sari kutu TRACK yazar";
 })();
 `;

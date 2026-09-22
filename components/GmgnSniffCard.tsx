@@ -12,7 +12,7 @@ export function GmgnSniffCard() {
     <div className="space-y-2 rounded-xl border border-line bg-surface p-4">
       <p className="text-sm font-medium">GMGN Track köprü (F12)</p>
       <p className="text-[11px] text-mute">
-        Canlı Track: XHR /api/v1/dex_trades_polling + QuotationSocketMgr. F12 v4 yalnız bunları parse eder; cüzdan/balance listesini atlar. earlygem açık kalsın → Track zaten açıksa kodu yapıştır → sayfayı YENİLEME → 10 sn bekle → sarı kutudaki JSON’u bu sohbete yapıştır (kodu değil).
+        Canlı Track: gmgn WS kanalı following_wallet_activity (s/a/au/h). OpenAPI follow_wallet kapalı. earlygem açık kalsın → Track sekmesinde F12 v5’i yapıştır → sayfayı YENİLEME → sarı kutu TRACK fill yazınca radar dolar. Kodu sohbete yapıştırma.
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -21,7 +21,7 @@ export function GmgnSniffCard() {
           onClick={() => {
             window.name = "earlygem";
             window.open("https://gmgn.ai/follow", "gmgntrack");
-            setHint("gmgn Track açıldı — F12 Console → kodu yapıştır → YENİLEME, 10 sn, sarı kutu JSON’unu sohbete yapıştır");
+            setHint("gmgn Track açıldı — F12 Console → v5 kodunu yapıştır → YENİLEME — sarı kutu TRACK fill yazınca radar dolar");
           }}
         >
           gmgn Track aç
@@ -32,7 +32,7 @@ export function GmgnSniffCard() {
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(GMGN_SNIFF_JS);
-              setHint("F12 kodu panoda — gmgn console’a yapıştır — kodu bana değil, 10 sn sonraki JSON’u gönder");
+              setHint("F12 v5 panoda — gmgn Track console’a yapıştır — YENİLEME — TRACK fill bekleniyor");
             } catch {
               setHint("kopya yok — aşağıdaki kutudan seç");
             }
@@ -43,7 +43,7 @@ export function GmgnSniffCard() {
       </div>
       <textarea className="h-28 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[10px]" readOnly value={GMGN_SNIFF_JS} />
       <p className="text-[11px] text-mute">
-        Polling gelince gmgn’de sarı kutu çıkar, JSON panoda. O JSON’u sohbete veya aşağı yapıştır. Elle: <span className="font-mono">__egGmgn.dump()</span>
+        Fill gelince gmgn’de sarı kutu TRACK yazar ve earlygem havuza düşer. postMessage olmazsa <span className="font-mono">__egGmgn.dump()</span> JSON’unu aşağı yapıştır.
       </p>
       <textarea
         className="h-20 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[10px]"
