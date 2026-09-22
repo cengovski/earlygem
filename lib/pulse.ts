@@ -2,8 +2,11 @@ import { logEvent, logHttpFailure } from "./log";
 
 const WORKER = "https://damp-butterfly-34a4.cengovski.workers.dev";
 const DIRECT = "https://fomopulse.app";
+const ORIGIN_COOL_MS = 5 * 60_000;
 
 export const PULSE_WORKER = WORKER;
+
+const originCool = new Map<string, number>();
 
 function extraOrigin() {
   const env =
@@ -25,6 +28,22 @@ function origins() {
 
 export const PULSE_ORIGINS = origins();
 export const PULSE = PULSE_ORIGINS[0];
+
+function originReady(origin: string) {
+  return (originCool.get(origin) || 0) <= Date.now();
+}
+
+function coolOrigin(origin: string) {
+  originCool.set(origin, Date.now() + ORIGIN_COOL_MS);
+}
+
+function originOf(url: string) {
+  try {
+    return new URL(url, typeof window !== "undefined" ? window.location.origin : "https://local").origin;
+  } catch {
+    return url;
+  }
+}
 
 function isChallenge(text: string) {
   return /just a moment|cf-browser-verification|attention required/i.test(text);
@@ -55,6 +74,7 @@ export async function getJson<T>(
     const ms = Date.now() - started;
     const snippet = await readBodySnippet(res);
     if (!res.ok || isChallenge(snippet)) {
+      coolOrigin(originOf(url));
       if (!quiet) {
         logEvent({
           level: "warn",
@@ -75,6 +95,7 @@ export async function getJson<T>(
     }
     return data;
   } catch (err) {
+    coolOrigin(originOf(url));
     if (!quiet) {
       logEvent({
         level: "error",
@@ -91,7 +112,8 @@ export async function getJson<T>(
 
 export async function getPulse<T>(pathAndQuery: string): Promise<T | null> {
   const path = pathAndQuery.startsWith("/") ? pathAndQuery : `/${pathAndQuery}`;
-  const list = origins();
+  const list = origins().filter(originReady);
+  if (!list.length) return null;
   for (let i = 0; i < list.length; i++) {
     const origin = list[i];
     const url = origin.startsWith("/") ? `${origin}${path.replace(/^\/api/, "")}` : `${origin}${path}`;
@@ -99,7 +121,7 @@ export async function getPulse<T>(pathAndQuery: string): Promise<T | null> {
     const data = await getJson<T>(url, { quiet: !last });
     if (data) return data;
   }
-  if (!list.length) {
+  if (!origins().length) {
     logHttpFailure({ event: "pulse", source: "pulse", url: DIRECT + path, detail: "no_pulse_origin" });
   }
   return null;

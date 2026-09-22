@@ -5,9 +5,11 @@ import { logEvent, logHttpFailure } from "./log";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const HOST = "https://openapi.gmgn.ai";
-const MIN_GAP_MS = 800;
-/** wallet_activity jobs per 25s tick. Nansen-only queue; 217 wallets ≈ 11 dk/tur. */
-const FOLLOW_JOBS = 8;
+const MIN_GAP_MS = 1_200;
+const COOL_EXCEEDED_MS = 90_000;
+const COOL_BANNED_MS = 12 * 60_000;
+/** wallet_activity jobs when follow PEM yok; every other 25s tick. */
+const FOLLOW_JOBS = 3;
 const MIN_USD = 8;
 const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 const STOCK = /^(googlb?|gmeb?|qqqb?|nvdab?|tslab?|aaplb?|msftb?|metab?|amznb?|gstock|sndk|qqq|spy|iwm)$/i;
@@ -70,6 +72,16 @@ const lastAt: Record<Lane, number> = { vps: 0, pc: 0 };
 const coolUntil: Record<Lane, number> = { vps: 0, pc: 0 };
 let turn = 0;
 let evmCursor = 0;
+let chainLock: Promise<void> = Promise.resolve();
+
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const run = chainLock.then(fn, fn);
+  chainLock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
 
 async function gate(lane: Lane) {
   const wait = MIN_GAP_MS - (Date.now() - lastAt[lane]);
@@ -101,6 +113,10 @@ function laneOrder(): Lane[] {
   return next.filter(laneReady);
 }
 
+export function gmgnCooling() {
+  return !laneReady("vps") && !laneReady("pc");
+}
+
 /** VPS (key 2 + /api/gmgn) then PC (key 1 + laptop IP), then the other way. A 429 only cools that lane. */
 export async function gmgnRequest(
   path: string,
@@ -118,36 +134,38 @@ export async function gmgnRequest(
     });
     return null;
   }
-  const lanes = laneOrder();
-  for (const lane of lanes) {
-    const auth = gmgnAuthQuery();
-    const params = new URLSearchParams();
-    const queryMap: Record<string, string> = { ...auth };
-    for (const [k, value] of Object.entries(query)) {
-      if (value == null || value === "") continue;
-      queryMap[k] = String(value);
-    }
-    for (const [k, value] of Object.entries(queryMap)) params.set(k, value);
-    let signature = "";
-    if (opts?.sign) {
-      try {
-        const msg = gmgnSignMessage(path, queryMap, "", auth.timestamp);
-        signature = await gmgnSign(gmgnPrivateKey(), msg);
-      } catch (err) {
-        logHttpFailure({
-          url: `${HOST}${path}`,
-          event: "gmgn",
-          source: "gmgn",
-          err,
-          detail: "follow_wallet imza",
-        });
-        return null;
+  return serialize(async () => {
+    const lanes = laneOrder();
+    for (const lane of lanes) {
+      const auth = gmgnAuthQuery();
+      const params = new URLSearchParams();
+      const queryMap: Record<string, string> = { ...auth };
+      for (const [k, value] of Object.entries(query)) {
+        if (value == null || value === "") continue;
+        queryMap[k] = String(value);
       }
+      for (const [k, value] of Object.entries(queryMap)) params.set(k, value);
+      let signature = "";
+      if (opts?.sign) {
+        try {
+          const msg = gmgnSignMessage(path, queryMap, "", auth.timestamp);
+          signature = await gmgnSign(gmgnPrivateKey(), msg);
+        } catch (err) {
+          logHttpFailure({
+            url: `${HOST}${path}`,
+            event: "gmgn",
+            source: "gmgn",
+            err,
+            detail: "follow_wallet imza",
+          });
+          return null;
+        }
+      }
+      const json = await hitLane(lane, path, params, signature);
+      if (json) return json;
     }
-    const json = await hitLane(lane, path, params, signature);
-    if (json) return json;
-  }
-  return null;
+    return null;
+  });
 }
 
 async function hitLane(lane: Lane, path: string, params: URLSearchParams, signature = ""): Promise<Record<string, unknown> | null> {
@@ -178,8 +196,16 @@ async function hitLane(lane: Lane, path: string, params: URLSearchParams, signat
     const errText = typeof json?.error === "string" ? json.error : "";
     const tag = `${lane} ${viaProxy ? "proxy" : "direct"}`;
     if (res.status === 429 || errText === "RATE_LIMIT_EXCEEDED" || errText === "RATE_LIMIT_BANNED") {
-      cool(lane, errText === "RATE_LIMIT_BANNED" ? 180_000 : 25_000);
-      logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", status: 429, ms, detail: `${tag} ${errText || "rate_limit"}` });
+      const banned = errText === "RATE_LIMIT_BANNED";
+      cool(lane, banned ? COOL_BANNED_MS : COOL_EXCEEDED_MS);
+      logHttpFailure({
+        url: upstream,
+        event: "gmgn",
+        source: "gmgn",
+        status: 429,
+        ms,
+        detail: `${tag} ${errText || "rate_limit"} · ${banned ? "12dk" : "90sn"} soğuma`,
+      });
       return null;
     }
     if (!res.ok || !json) {
@@ -402,32 +428,26 @@ function fillFromFollow(row: FollowRow, chain: ChainId): TapeFill | null {
 /** Live Track feed for wallets followed on gmgn.ai/follow (API key account), not a site scrape. */
 export async function fetchGmgnFollowTape(): Promise<TapeFill[]> {
   if (!gmgnFollowConfigured()) return [];
-  const picks: ChainId[] = [];
-  for (let i = 0; i < 2; i++) picks.push(FOLLOW_CHAINS[(followCursor + i) % FOLLOW_CHAINS.length]);
-  followCursor += 2;
-  const bags = await Promise.all(
-    picks.map(async (chain) => {
-      const slug = gmgnSlug(chain);
-      if (!slug) return [] as TapeFill[];
-      const raw = await gmgnRequest("/v1/trade/follow_wallet", { chain: slug, limit: 50, side: "buy" }, { sign: true });
-      const data = (raw?.data || raw) as { list?: FollowRow[] } | undefined;
-      const rows = data?.list || [];
-      const fills: TapeFill[] = [];
-      for (const row of rows) {
-        const fill = fillFromFollow(row, chainFromGmgn(row.chain) || chain);
-        if (fill) fills.push(fill);
-      }
-      return fills;
-    }),
-  );
-  const out = bags.flat().sort((a, b) => b.ts - a.ts);
+  const chain = FOLLOW_CHAINS[followCursor % FOLLOW_CHAINS.length];
+  followCursor += 1;
+  const slug = gmgnSlug(chain);
+  if (!slug) return [];
+  const raw = await gmgnRequest("/v1/trade/follow_wallet", { chain: slug, limit: 50, side: "buy" }, { sign: true });
+  const data = (raw?.data || raw) as { list?: FollowRow[] } | undefined;
+  const rows = data?.list || [];
+  const out: TapeFill[] = [];
+  for (const row of rows) {
+    const fill = fillFromFollow(row, chainFromGmgn(row.chain) || chain);
+    if (fill) out.push(fill);
+  }
+  out.sort((a, b) => b.ts - a.ts);
   logEvent({
     level: out.length ? "info" : "warn",
     event: "gmgn_follow",
     outcome: out.length ? "ok" : "empty",
     source: "gmgn",
     count: out.length,
-    detail: `follow_wallet ${picks.join("+")} · ${out.length} fill`,
+    detail: `follow_wallet ${chain} · ${out.length} fill`,
   });
   return out;
 }

@@ -7,8 +7,10 @@ const HOST = "https://api.fomoapi.io";
 const GAP_MS = 2500;
 const CACHE_MS = 45_000;
 const TAPE_MAX_AGE_MS = 20 * 60_000;
+const PAYWALL_MS = 6 * 60 * 60_000;
 
 let lastAt = 0;
+let paywallUntil = 0;
 let alertCache: { at: number; fills: TapeFill[] } | null = null;
 
 export function fomoApiKey() {
@@ -39,6 +41,7 @@ function chainOf(row: { chain?: string; chainId?: number }): ChainId | null {
 export async function fomoGet<T>(path: string, query?: Record<string, string>): Promise<T | null> {
   const key = fomoApiKey();
   if (!key) return null;
+  if (Date.now() < paywallUntil) return null;
   await gate();
   const qs = query ? `?${new URLSearchParams(query).toString()}` : "";
   const url = `${HOST}${path}${qs}`;
@@ -53,6 +56,18 @@ export async function fomoGet<T>(path: string, query?: Record<string, string>): 
     if (res.status === 429) {
       lastAt = Date.now() + 15_000;
       logHttpFailure({ url, event: "fomo", source: "fomo", status: 429, ms, detail: "rate_limit" });
+      return null;
+    }
+    if (res.status === 402 || res.status === 401 || res.status === 403) {
+      paywallUntil = Date.now() + PAYWALL_MS;
+      logHttpFailure({
+        url,
+        event: "fomo",
+        source: "fomo",
+        status: res.status,
+        ms,
+        detail: res.status === 402 ? "ödeme/kota yok · 6s dur" : "auth · 6s dur",
+      });
       return null;
     }
     if (!res.ok) {
