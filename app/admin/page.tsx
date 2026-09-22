@@ -5,6 +5,7 @@ import { Shell } from "@/components/Shell";
 import { GmgnExportCard } from "@/components/GmgnExportCard";
 import { followedWallets, gmgnExportJson } from "@/lib/gmgn-export";
 import { GmgnPemCard } from "@/components/GmgnPemCard";
+import { GmgnSniffCard } from "@/components/GmgnSniffCard";
 import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
 import { chainLabel, explorerWallet, shortAddr } from "@/lib/format";
 import { loadNansenCache, nansenChainCounts, pullNansenSmart, type NansenCache } from "@/lib/nansen";
@@ -108,6 +109,7 @@ export default function AdminPage() {
           GMGN VPS proxy URL
           <input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="text" value={keys.gmgnProxy || ""} onChange={(e) => setKeys({ ...keys, gmgnProxy: e.target.value })} placeholder="boş = /api/gmgn · Termux: https://earlygem-live.vercel.app/api/gmgn" />
         </label>
+        <GmgnSniffCard />
         <GmgnPemCard keys={keys} setKeys={setKeys} onHint={setMsg} />
         <label className="block text-sm">Binance key<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceKey || ""} onChange={(e) => setKeys({ ...keys, binanceKey: e.target.value })} /></label>
         <label className="block text-sm">Binance secret<input className="mt-1 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-xs" type="password" value={keys.binanceSecret || ""} onChange={(e) => setKeys({ ...keys, binanceSecret: e.target.value })} /></label>

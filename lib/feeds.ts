@@ -2,7 +2,7 @@ import { attachRosterFlags } from "./alert-msg";
 import { fetchBinanceFeeds } from "./binance";
 import { fetchFomoAlerts } from "./fomoapi";
 import { fetchExtraFeeds } from "./extra-feeds";
-import { fetchGmgnFollowTape, fetchGmgnWalletTape, gmgnCooling, gmgnFollowConfigured, gmgnRequest, gmgnSlug } from "./gmgn";
+import { fetchGmgnWalletTape, gmgnCooling, gmgnRequest, gmgnSlug } from "./gmgn";
 import { logHttpFailure } from "./log";
 import { PULSE_WORKER } from "./pulse";
 import { classifyTrader } from "./smart";
@@ -296,13 +296,9 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
   const gmgnParts: Array<{ fills: TapeFill[]; traders: Trader[] }> = [];
   let follow: TapeFill[] = [];
   if (!gmgnCooling()) {
-    if (gmgnFollowConfigured()) {
-      follow = await fetchGmgnFollowTape();
-    } else if (tick % 2 === 0) {
-      follow = await fetchGmgnWalletTape(watch);
-    } else {
-      gmgnParts.push(await pullRotatedFeed(Math.floor(tick / 2)));
-    }
+    const pair = ROTATE[tick % ROTATE.length];
+    for (const job of pair) gmgnParts.push(await pullFeed(job.kind, job.chain, 30));
+    follow = await fetchGmgnWalletTape(watch);
   }
   const traders = mergeTraders(
     watch,

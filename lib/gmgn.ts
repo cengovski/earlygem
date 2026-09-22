@@ -222,7 +222,7 @@ export async function gmgnRequest(
         }
       }
       const json = await hitLane(lane, path, params, signature);
-      if (json === "rate") return null;
+      if (json === "rate" || json === "banned") return null;
       if (json && typeof json === "object") return json;
     }
     return null;
@@ -259,8 +259,7 @@ async function hitLane(lane: Lane, path: string, params: URLSearchParams, signat
     if (res.status === 429 || errText === "RATE_LIMIT_EXCEEDED" || errText === "RATE_LIMIT_BANNED") {
       const banned = errText === "RATE_LIMIT_BANNED";
       const wait = coolMs(json, banned);
-      if (banned) cool(lane, wait);
-      else coolAccount(wait);
+      coolAccount(wait);
       logHttpFailure({
         url: upstream,
         event: "gmgn",
