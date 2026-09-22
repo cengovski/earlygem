@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
+import { chainLabel, explorerWallet, shortAddr } from "@/lib/format";
 import { loadNansenCache, nansenChainCounts, pullNansenSmart, type NansenCache } from "@/lib/nansen";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 import { DEFAULT_RULE, loadRule, saveRule, type AlertRule } from "@/lib/watch";
@@ -192,15 +193,44 @@ export default function AdminPage() {
           </button>
         </div>
         {nansenInfo ? (
-          <p className="text-xs text-mute">
-            son: {nansenInfo.wallets.length} cüzdan
-            {nansenChainCounts(nansenInfo.wallets) ? ` · ${nansenChainCounts(nansenInfo.wallets)}` : ""}
-            {nansenInfo.creditsRemaining ? ` · kalan kredi ${nansenInfo.creditsRemaining}` : ""}
-            {nansenInfo.at ? ` · ${new Date(nansenInfo.at).toLocaleString()}` : ""}
-            {nansenInfo.error ? ` · ${nansenInfo.error}` : ""}
-          </p>
+          <div className="space-y-2">
+            <p className="text-xs text-mute">
+              son: {nansenInfo.wallets.length} cüzdan
+              {nansenChainCounts(nansenInfo.wallets) ? ` · ${nansenChainCounts(nansenInfo.wallets)}` : ""}
+              {nansenInfo.creditsRemaining ? ` · kalan kredi ${nansenInfo.creditsRemaining}` : ""}
+              {nansenInfo.at ? ` · ${new Date(nansenInfo.at).toLocaleString()}` : ""}
+              {nansenInfo.error ? ` · ${nansenInfo.error}` : ""}
+            </p>
+            {nansenInfo.wallets.length ? (
+              <div className="max-h-56 overflow-auto rounded-md border border-line">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="sticky top-0 bg-[#18160f] text-mute">
+                    <tr>
+                      <th className="px-2 py-1">ağ</th>
+                      <th className="px-2 py-1">etiket</th>
+                      <th className="px-2 py-1">cüzdan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nansenInfo.wallets.map((row) => (
+                      <tr key={`${row.chain}:${row.address}`} className="border-t border-line">
+                        <td className="px-2 py-1 text-mute">{chainLabel(row.chain)}</td>
+                        <td className="px-2 py-1">{row.handle}</td>
+                        <td className="px-2 py-1 font-mono">
+                          <a href={explorerWallet(row.chain, row.address)} target="_blank" rel="noreferrer" className="hover:text-accent">
+                            {shortAddr(row.address, 6)}
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            <p className="text-[11px] text-mute">Kayıt: bu tarayıcı localStorage `eg_nansen_smart_v2`. Üstteki Solana takip kutusuna yazılmaz. Roster `/traders`, alımlar `/tape`.</p>
+          </div>
         ) : (
-          <p className="text-xs text-mute">henüz çekim yok</p>
+          <p className="text-xs text-mute">henüz çekim yok — şimdi çek</p>
         )}
       </form>
       <form
