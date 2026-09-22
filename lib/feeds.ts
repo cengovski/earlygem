@@ -2,7 +2,7 @@ import { attachRosterFlags } from "./alert-msg";
 import { fetchBinanceFeeds } from "./binance";
 import { fetchFomoAlerts } from "./fomoapi";
 import { fetchExtraFeeds } from "./extra-feeds";
-import { fetchGmgnWalletTape, gmgnRequest, gmgnSlug } from "./gmgn";
+import { fetchGmgnFollowTape, fetchGmgnWalletTape, gmgnFollowConfigured, gmgnRequest, gmgnSlug } from "./gmgn";
 import { logHttpFailure } from "./log";
 import { PULSE_WORKER } from "./pulse";
 import { classifyTrader } from "./smart";
@@ -292,7 +292,7 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
     pullNansenSmart(),
   ]);
   const watch = mergeFollow(watchTraders(), nansen.traders);
-  const follow = await fetchGmgnWalletTape(watch);
+  const follow = gmgnFollowConfigured() ? await fetchGmgnFollowTape() : await fetchGmgnWalletTape(watch);
   const traders = mergeTraders(
     watch,
     [...gmgnParts.flatMap((p) => p.traders), ...pump, ...bn.traders, ...extra.traders],

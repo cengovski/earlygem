@@ -7,6 +7,7 @@ const ALLOW = new Set([
   "/v1/user/kol",
   "/v1/user/smartmoney",
   "/v1/user/wallet_activity",
+  "/v1/trade/follow_wallet",
   "/v1/token/security",
   "/v1/token/info",
 ]);
@@ -21,12 +22,17 @@ export async function GET(req: Request) {
   if (!key) {
     return NextResponse.json({ error: "key" }, { status: 401 });
   }
+  const sig = (req.headers.get("x-eg-gmgn-sig") || "").trim();
   const params = new URLSearchParams(url.searchParams);
   params.delete("path");
   const dest = `${HOST}${path}?${params.toString()}`;
   try {
     const res = await fetch(dest, {
-      headers: { "X-APIKEY": key, Accept: "application/json" },
+      headers: {
+        "X-APIKEY": key,
+        Accept: "application/json",
+        ...(sig ? { "X-Signature": sig } : {}),
+      },
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
