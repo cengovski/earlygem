@@ -21,6 +21,30 @@ function chainOf(raw: string | undefined): ChainId {
   return "solana";
 }
 
+export function parseGmgnTrackFills(raw: unknown): Record<string, unknown>[] {
+  let data: unknown = raw;
+  if (typeof data === "string") {
+    const text = data.trim();
+    if (!text) return [];
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(data)) {
+    return data.filter((row) => row && typeof row === "object") as Record<string, unknown>[];
+  }
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    const list = obj.fills ?? obj.trades;
+    if (Array.isArray(list)) {
+      return list.filter((row) => row && typeof row === "object") as Record<string, unknown>[];
+    }
+  }
+  return [];
+}
+
 function asFill(row: Record<string, unknown>): TapeFill | null {
   const side = String(row.side || "").toLowerCase();
   if (side !== "buy" && side !== "sell") return null;
@@ -53,7 +77,7 @@ function asFill(row: Record<string, unknown>): TapeFill | null {
     profileUrl: row.profileUrl ? String(row.profileUrl) : null,
     rank: null,
     tx: row.tx ? String(row.tx) : null,
-    firstBuy: false,
+    firstBuy: Boolean(row.firstBuy) || Number(row.ooc) === 1,
     flags,
     source: "dexscreener",
     smartKind: (row.smartKind as SmartKind) || "smart",
@@ -61,8 +85,8 @@ function asFill(row: Record<string, unknown>): TapeFill | null {
 }
 
 export function ingestGmgnTrackPayload(raw: unknown) {
-  const rows = Array.isArray(raw) ? raw : [];
-  const fills = rows.map((r) => (r && typeof r === "object" ? asFill(r as Record<string, unknown>) : null)).filter(Boolean) as TapeFill[];
+  const rows = parseGmgnTrackFills(raw);
+  const fills = rows.map((r) => asFill(r)).filter(Boolean) as TapeFill[];
   if (!fills.length) return 0;
   ingestPool(fills, WINDOW_MIN);
   const buys = fills.filter((f) => f.side === "buy").length;

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { RefreshButton } from "./RefreshButton";
 import { SourceDots } from "./SourceDots";
+import { GmgnTrackIngestBar } from "./GmgnTrackIngestBar";
 import { useRadar } from "./RadarProvider";
 import { isFault } from "@/lib/log";
 
@@ -52,8 +53,9 @@ export function Shell({
             <span className="font-mono text-[11px] uppercase tracking-wider text-mute">RH · SOL · BASE · BSC · ETH · MON</span>
           </div>
         </div>
-        <div className="mx-auto max-w-7xl px-4 pb-2">
+        <div className="mx-auto max-w-7xl space-y-2 px-4 pb-2">
           <SourceDots />
+          <GmgnTrackIngestBar />
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">
