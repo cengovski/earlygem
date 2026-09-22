@@ -86,8 +86,10 @@ export async function signBinanceJobs(): Promise<BinanceTicket[]> {
   return out;
 }
 
+let binanceCoolUntil = 0;
+
 async function signedGet(path: string, query: Record<string, string>) {
-  if (!binanceConfigured()) return null;
+  if (!binanceConfigured() || Date.now() < binanceCoolUntil) return null;
   const signed = await signOne(path, query);
   const started = Date.now();
   try {
@@ -103,6 +105,8 @@ async function signedGet(path: string, query: Record<string, string>) {
     }
     return (await res.json().catch(() => null)) as Record<string, unknown> | null;
   } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) binanceCoolUntil = Date.now() + 5 * 60_000;
     logHttpFailure({ url: signed.url, event: "binance", source: "binance", err, ms: Date.now() - started });
     return null;
   }
