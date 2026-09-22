@@ -96,7 +96,7 @@ export function GmgnPemCard({
           gmgn.ai/ai
         </a>{" "}
         formuna yapıştır (BEGIN/END dahil). Private tarayıcıda kalır, Vercel’e gitmez — yalnız imza header’ı proxy’den
-        geçer. PEM yoksa eski 8-cüzdan taraması devam eder. Terminal: <span className="font-mono">npx gmgn-cli config</span>.
+        geçer. PEM yoksa wallet_activity turda 3 cüzdan (iki tick’te bir). Terminal: <span className="font-mono">npx gmgn-cli config</span>.
       </p>
     </div>
   );

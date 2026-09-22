@@ -271,7 +271,9 @@ function collect(rows: DexTrade[], now: number) {
   return { wallets, fills };
 }
 
-export async function pullNansenSmart(opts?: { force?: boolean }): Promise<{
+let nansenBg: Promise<unknown> | null = null;
+
+export async function pullNansenSmart(opts?: { force?: boolean; pages?: number }): Promise<{
   traders: Trader[];
   fills: TapeFill[];
   cache: NansenCache | null;
@@ -291,8 +293,17 @@ export async function pullNansenSmart(opts?: { force?: boolean }): Promise<{
       markSource("nansen", prev.wallets.length > 0, prev.wallets.length);
       return { traders: nansenCachedTraders(), fills: [], cache: prev };
     }
+    if (prev.wallets.length) {
+      markSource("nansen", true, prev.wallets.length);
+      if (!nansenBg) {
+        nansenBg = pullNansenSmart({ force: true, pages: MAX_PAGES_AUTO }).finally(() => {
+          nansenBg = null;
+        });
+      }
+      return { traders: nansenCachedTraders(), fills: [], cache: prev };
+    }
   }
-  const maxPages = opts?.force ? MAX_PAGES_FORCE : MAX_PAGES_AUTO;
+  const maxPages = opts?.pages ?? (opts?.force ? MAX_PAGES_FORCE : MAX_PAGES_AUTO);
   const fresh: NansenWallet[] = [];
   const fills: TapeFill[] = [];
   let remaining: string | null = prev?.creditsRemaining || null;

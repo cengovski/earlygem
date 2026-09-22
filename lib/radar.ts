@@ -182,7 +182,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     })),
   );
 
-  const feeds = await withTimeout(fetchExternalFeeds(), 12_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
+  const feeds = await withTimeout(fetchExternalFeeds(), 16_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
   traders = mergeTraders(traders, feeds.traders);
   const solTape = uniqueFills(attachRosterFlags(feeds.fills.filter(keepFill), traders)).sort((a, b) => b.ts - a.ts);
   const tape = uniqueFills(attachRosterFlags(pulseTape, traders));
