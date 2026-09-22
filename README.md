@@ -18,7 +18,7 @@ npm run dev
 
 Vercel: Next.js. Admin şifresi `ADMIN_PASSWORD`. Feed key’leri Vercel env değil, tarayıcı.
 
-Nansen: resmi API. `/admin` → Nansen API key. `POST /api/v1/smart-money/dex-trades` **Solana + Base + Ethereum + BNB + Robinhood**, Smart Trader/Fund, **5 kredi / çekim** (tek istekte tüm ağlar), en fazla günde 1. Kredi bitince durur. Cüzdanlar kendi zincirinde GMGN `wallet_activity` ile takip edilir. Elle liste `watchSol` hâlâ Solana. App sayfası scrape edilmez.
+Nansen: resmi API. `/admin` → Nansen API key. `POST /api/v1/smart-money/dex-trades` **Solana + Base + Ethereum + BNB + Robinhood**, Smart Trader/Fund, **5 kredi / çekim** (tek istekte tüm ağlar), en fazla günde 1. Kredi bitince durur. Liste yenilenince cüzdanlar GMGN `wallet_activity` ile **turda 8 adres** taranır (KOL/smart feed kuyruğa karışmaz). Elle liste `watchSol` aynı kuyrukta. App sayfası scrape edilmez.
 
 Telegram çalışmıyorsa `/admin` → **telegram test**. Bot kanalda admin olmalı, chat id `-100…` grup/kanal id’si.
 
