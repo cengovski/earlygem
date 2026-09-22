@@ -6,7 +6,7 @@ import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const HOST = "https://openapi.gmgn.ai";
 const MIN_GAP_MS = 1_200;
-const COOL_EXCEEDED_MS = 90_000;
+const COOL_EXCEEDED_MS = 3 * 60_000;
 const COOL_BANNED_MS = 12 * 60_000;
 /** wallet_activity jobs when follow PEM yok; every other 25s tick. */
 const FOLLOW_JOBS = 3;
@@ -162,13 +162,14 @@ export async function gmgnRequest(
         }
       }
       const json = await hitLane(lane, path, params, signature);
+      if (json === "rate") return null;
       if (json) return json;
     }
     return null;
   });
 }
 
-async function hitLane(lane: Lane, path: string, params: URLSearchParams, signature = ""): Promise<Record<string, unknown> | null> {
+async function hitLane(lane: Lane, path: string, params: URLSearchParams, signature = ""): Promise<Record<string, unknown> | "rate" | null> {
   const key = gmgnLaneKeys()[lane];
   if (!key) return null;
   await gate(lane);
@@ -204,9 +205,9 @@ async function hitLane(lane: Lane, path: string, params: URLSearchParams, signat
         source: "gmgn",
         status: 429,
         ms,
-        detail: `${tag} ${errText || "rate_limit"} · ${banned ? "12dk" : "90sn"} soğuma`,
+        detail: `${tag} ${errText || "rate_limit"} · ${banned ? "12dk" : "3dk"} soğuma`,
       });
-      return null;
+      return "rate";
     }
     if (!res.ok || !json) {
       if (res.status === 401 || res.status === 403) cool(lane, 60_000);

@@ -296,11 +296,12 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
   const gmgnParts: Array<{ fills: TapeFill[]; traders: Trader[] }> = [];
   let follow: TapeFill[] = [];
   if (!gmgnCooling()) {
-    const feedTick = Math.floor(tick / 2);
-    if (tick % 2 === 0) {
-      follow = gmgnFollowConfigured() ? await fetchGmgnFollowTape() : await fetchGmgnWalletTape(watch);
+    if (gmgnFollowConfigured()) {
+      if (tick % 2 === 0) follow = await fetchGmgnFollowTape();
+    } else if (tick % 2 === 0) {
+      follow = await fetchGmgnWalletTape(watch);
     } else {
-      gmgnParts.push(await pullRotatedFeed(feedTick));
+      gmgnParts.push(await pullRotatedFeed(Math.floor(tick / 2)));
     }
   }
   const traders = mergeTraders(
