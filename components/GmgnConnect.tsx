@@ -16,8 +16,25 @@ function loadLog(): string[] {
 }
 
 function errText(err: unknown) {
-  if (err instanceof Error) return `${err.name}: ${err.message}`.slice(0, 220);
-  return String(err).slice(0, 220);
+  const raw = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  return raw.replace(/javascript:\S+/g, "javascript:…").slice(0, 180);
+}
+
+function copyText(text: string) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;left:0;top:0;opacity:0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 function sleep(ms: number) {
@@ -29,6 +46,7 @@ export function GmgnConnect() {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("hazır");
   const [busy, setBusy] = useState(false);
+  const [sniff, setSniff] = useState("");
 
   function push(line: string) {
     const row = `${new Date().toISOString().slice(11, 19)} ${line}`;
@@ -62,7 +80,10 @@ export function GmgnConnect() {
     setOpen(true);
     window.name = "earlygem";
     push("CONNECT");
-    const sniff = gmgnSniffSource(window.location.origin);
+    const code = gmgnSniffSource(window.location.origin);
+    setSniff(code);
+    const copied = copyText(code);
+    push(copied ? "v5.6 panoya yazıldı" : "pano yazılamadı — alttaki kod kutusundan kopyala");
     let win: Window | null = null;
     try {
       win = window.open(GMGN, "eg-gmgn");
@@ -91,7 +112,7 @@ export function GmgnConnect() {
       } catch (err) {
         push(`çapraz köken (${errText(err)}) — eval deneniyor`);
         try {
-          (win as Window & { eval: (code: string) => unknown }).eval(sniff);
+          (win as Window & { eval: (code: string) => unknown }).eval(code);
           push("eval oldu");
           setStatus("enjekte");
           injected = true;
@@ -100,17 +121,16 @@ export function GmgnConnect() {
           push(`eval reddedildi ${errText(evalErr)}`);
         }
         try {
-          win.location.href = `javascript:${encodeURIComponent(sniff)}`;
+          win.location.href = `javascript:${encodeURIComponent(code)}`;
           push("javascript: atandı, istisna yok");
         } catch (jsErr) {
           push(`javascript: reddedildi ${errText(jsErr)}`);
         }
-        try {
-          await navigator.clipboard.writeText(sniff);
-          push("v5.6 panoda. gmgn Track’i bir kez yenile, F12 → Console → yapıştır → Enter");
-        } catch (clipErr) {
-          push(`pano kopyalanamadı ${errText(clipErr)}`);
-        }
+        push(
+          copied
+            ? "v5.6 panoda. gmgn Track’i bir kez yenile, F12 → Console → yapıştır → Enter"
+            : "enjeksiyon reddedildi. Kod kutusundan v5.6’yı kopyala, Track’i yenile, console’a yapıştır",
+        );
         setStatus("F12 gerekli");
         setBusy(false);
         return;
@@ -124,14 +144,16 @@ export function GmgnConnect() {
     setBusy(false);
   }
 
-  async function copyLog() {
-    const text = log.join("\n");
-    try {
-      await navigator.clipboard.writeText(text || "boş log");
+  function copyLog() {
+    const text = log.join("\n") || "boş log";
+    if (copyText(text)) {
       push("log panoya kopyalandı");
-    } catch (err) {
-      push(`log kopyalanamadı ${errText(err)}`);
+      return;
     }
+    void navigator.clipboard.writeText(text).then(
+      () => push("log panoya kopyalandı"),
+      (err) => push(`log kopyalanamadı ${errText(err)}`),
+    );
   }
 
   return (
@@ -149,7 +171,7 @@ export function GmgnConnect() {
         <button type="button" className="rounded-md border border-line px-2 py-1 text-[11px] text-mute" onClick={() => setOpen((v) => !v)}>
           {open ? "logu gizle" : "log"}
         </button>
-        <button type="button" className="rounded-md border border-line px-2 py-1 text-[11px] text-mute" onClick={() => void copyLog()}>
+        <button type="button" className="rounded-md border border-line px-2 py-1 text-[11px] text-mute" onClick={copyLog}>
           logu kopyala
         </button>
         <button
@@ -174,6 +196,14 @@ export function GmgnConnect() {
         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-line bg-[#12110c] p-2 font-mono text-[10px] text-ink">
           {log.length ? log.join("\n") : "henüz kayıt yok"}
         </pre>
+      ) : null}
+      {sniff ? (
+        <textarea
+          className="mt-2 h-20 w-full rounded-md border border-line bg-[#12110c] p-2 font-mono text-[10px]"
+          readOnly
+          value={sniff}
+          aria-label="v5.6 overlay"
+        />
       ) : null}
     </div>
   );
