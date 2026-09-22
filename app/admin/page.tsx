@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-keys";
-import { loadNansenCache, pullNansenSmart, type NansenCache } from "@/lib/nansen";
+import { loadNansenCache, nansenChainCounts, pullNansenSmart, type NansenCache } from "@/lib/nansen";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
 import { DEFAULT_RULE, loadRule, saveRule, type AlertRule } from "@/lib/watch";
 
@@ -154,7 +154,7 @@ export default function AdminPage() {
       >
         <p className="text-sm font-medium">Nansen API</p>
         <p className="text-xs text-mute">
-          Resmi uç: POST /api/v1/smart-money/dex-trades · Solana · Smart Trader / Fund · 5 kredi / istek. Radar 24 saatte bir çeker; kredi bitince durur. Cüzdanlar GMGN takibine girer.
+          Resmi uç: POST /api/v1/smart-money/dex-trades · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / Fund · 5 kredi / istek (tek çağrı, tüm ağlar). Radar 24 saatte bir çeker; kredi bitince durur. Cüzdanlar kendi ağında GMGN takibine girer.
         </p>
         <label className="block text-sm">
           API key
@@ -185,7 +185,7 @@ export default function AdminPage() {
               setNansenInfo(out.cache);
               setNansenBusy(false);
               if (out.cache?.error) setMsg(`nansen: ${out.cache.error}`);
-              else setMsg(`nansen: ${out.cache?.wallets.length || 0} smart cüzdan · kredi ${out.cache?.creditsRemaining ?? "?"} · 5 kredi gitti`);
+              else setMsg(`nansen: ${out.cache?.wallets.length || 0} cüzdan · ${nansenChainCounts(out.cache?.wallets || []) || "ağ yok"} · kredi ${out.cache?.creditsRemaining ?? "?"}`);
             }}
           >
             {nansenBusy ? "çekiliyor…" : "şimdi çek"}
@@ -194,6 +194,7 @@ export default function AdminPage() {
         {nansenInfo ? (
           <p className="text-xs text-mute">
             son: {nansenInfo.wallets.length} cüzdan
+            {nansenChainCounts(nansenInfo.wallets) ? ` · ${nansenChainCounts(nansenInfo.wallets)}` : ""}
             {nansenInfo.creditsRemaining ? ` · kalan kredi ${nansenInfo.creditsRemaining}` : ""}
             {nansenInfo.at ? ` · ${new Date(nansenInfo.at).toLocaleString()}` : ""}
             {nansenInfo.error ? ` · ${nansenInfo.error}` : ""}
