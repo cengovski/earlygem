@@ -10,24 +10,31 @@ const STORE = "eg_nansen_smart_v2";
 const UPSTREAM = "https://api.nansen.ai/api/v1/smart-money/dex-trades";
 const CACHE_MS = 24 * 60 * 60 * 1000;
 const FAIL_MS = 6 * 60 * 60 * 1000;
+const PER_PAGE = 1000;
+const MAX_PAGES_AUTO = 2;
+const MAX_PAGES_FORCE = 3;
+const MAX_WALLETS = 2000;
+const KEEP_MS = 21 * 24 * 60 * 60 * 1000;
 
 export const NANSEN_CHAINS = ["solana", "base", "ethereum", "bnb", "robinhood"] as const;
 
 export const NANSEN_BODY = {
   chains: [...NANSEN_CHAINS],
   filters: {
-    include_smart_money_labels: ["Smart Trader", "30D Smart Trader", "90D Smart Trader", "Fund"],
-    trade_value_usd: { min: 500 },
+    include_smart_money_labels: ["Smart Trader", "30D Smart Trader", "90D Smart Trader", "180D Smart Trader", "Fund"],
+    trade_value_usd: { min: 200 },
   },
-  pagination: { page: 1, per_page: 500 },
+  pagination: { page: 1, per_page: PER_PAGE },
   order_by: [{ field: "trade_value_usd", direction: "DESC" as const }],
 };
 
-export type NansenWallet = { chain: ChainId; address: string; handle: string };
+export type NansenWallet = { chain: ChainId; address: string; handle: string; seenAt: number };
 
 export type NansenCache = {
   at: number;
   wallets: NansenWallet[];
+  added?: number;
+  pages?: number;
   creditsRemaining: string | null;
   creditsUsed: string | null;
   error?: string;
@@ -64,12 +71,13 @@ function isWalletOn(chain: ChainId, address: string) {
   return chain === "solana" ? isSolWallet(address) : isEvmWallet(address);
 }
 
-function migrateWallet(row: NansenWallet & { solana?: string }): NansenWallet | null {
+function migrateWallet(row: NansenWallet & { solana?: string; seenAt?: number }, fallbackAt: number): NansenWallet | null {
+  const seenAt = row.seenAt || fallbackAt;
   if (row.chain && row.address && isWalletOn(row.chain, row.address)) {
-    return { chain: row.chain, address: row.address, handle: row.handle || row.address.slice(0, 8) };
+    return { chain: row.chain, address: row.address, handle: row.handle || row.address.slice(0, 8), seenAt };
   }
   if (row.solana && isSolWallet(row.solana)) {
-    return { chain: "solana", address: row.solana, handle: row.handle || row.solana.slice(0, 8) };
+    return { chain: "solana", address: row.solana, handle: row.handle || row.solana.slice(0, 8), seenAt };
   }
   return null;
 }
@@ -79,7 +87,7 @@ export function loadNansenCache(): NansenCache | null {
     const raw = persistGet(STORE);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as NansenCache;
-    return { ...parsed, wallets: (parsed.wallets || []).map(migrateWallet).filter(Boolean) as NansenWallet[] };
+    return { ...parsed, wallets: (parsed.wallets || []).map((w) => migrateWallet(w, parsed.at || Date.now())).filter(Boolean) as NansenWallet[] };
   } catch {
     return null;
   }
@@ -87,6 +95,33 @@ export function loadNansenCache(): NansenCache | null {
 
 function saveCache(row: NansenCache) {
   persistSet(STORE, JSON.stringify(row));
+}
+
+function mergeWallets(prev: NansenWallet[], next: NansenWallet[], now: number) {
+  const map = new Map<string, NansenWallet>();
+  for (const row of [...prev, ...next]) {
+    const k = walletId(row.chain, row.address);
+    const old = map.get(k);
+    if (!old) {
+      map.set(k, row);
+      continue;
+    }
+    map.set(k, {
+      ...old,
+      handle: row.handle || old.handle,
+      seenAt: Math.max(old.seenAt || 0, row.seenAt || 0),
+    });
+  }
+  return [...map.values()]
+    .filter((w) => now - (w.seenAt || 0) < KEEP_MS)
+    .sort((a, b) => (b.seenAt || 0) - (a.seenAt || 0))
+    .slice(0, MAX_WALLETS);
+}
+
+function creditsLeft(raw: string | null) {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 function gmgnPath(chain: ChainId) {
@@ -182,7 +217,7 @@ function fillOf(row: DexTrade): TapeFill | null {
   };
 }
 
-async function hit(key: string) {
+async function hit(key: string, page: number) {
   const url = typeof window !== "undefined" ? "/api/nansen" : UPSTREAM;
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -194,13 +229,14 @@ async function hit(key: string) {
   const res = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(NANSEN_BODY),
+    body: JSON.stringify({ ...NANSEN_BODY, pagination: { page, per_page: PER_PAGE } }),
     cache: "no-store",
     signal: AbortSignal.timeout(20_000),
   });
   const ms = Date.now() - started;
   const json = (await res.json().catch(() => null)) as {
     data?: DexTrade[];
+    pagination?: { page?: number; per_page?: number; is_last_page?: boolean };
     error?: string;
     message?: string;
     code?: string;
@@ -210,6 +246,29 @@ async function hit(key: string) {
   const remaining = res.headers.get("x-nansen-credits-remaining") || json?.creditsRemaining || null;
   const used = res.headers.get("x-nansen-credits-used") || json?.creditsUsed || null;
   return { res, json, ms, remaining, used };
+}
+
+function collect(rows: DexTrade[], now: number) {
+  const wallets: NansenWallet[] = [];
+  const seen = new Set<string>();
+  const fills: TapeFill[] = [];
+  for (const row of rows) {
+    const fill = fillOf(row);
+    if (fill) fills.push(fill);
+    const chain = chainFromNansen(row.chain);
+    const address = chain === "solana" ? row.trader_address || "" : (row.trader_address || "").toLowerCase();
+    if (!chain || !isWalletOn(chain, address)) continue;
+    const k = walletId(chain, address);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    wallets.push({
+      chain,
+      address,
+      handle: (row.trader_address_label || address.slice(0, 8)).replace(/^@/, ""),
+      seenAt: now,
+    });
+  }
+  return { wallets, fills };
 }
 
 export async function pullNansenSmart(opts?: { force?: boolean }): Promise<{
@@ -233,54 +292,73 @@ export async function pullNansenSmart(opts?: { force?: boolean }): Promise<{
       return { traders: nansenCachedTraders(), fills: [], cache: prev };
     }
   }
+  const maxPages = opts?.force ? MAX_PAGES_FORCE : MAX_PAGES_AUTO;
+  const fresh: NansenWallet[] = [];
+  const fills: TapeFill[] = [];
+  let remaining: string | null = prev?.creditsRemaining || null;
+  let usedTotal = 0;
+  let pages = 0;
+  let lastMs = 0;
   try {
-    const { res, json, ms, remaining, used } = await hit(key);
-    const detail = json?.message || json?.error || json?.code || res.statusText;
-    if (res.status === 429) {
-      logHttpFailure({ url: UPSTREAM, event: "nansen", source: "nansen", status: 429, ms, detail: "rate_limit" });
-      const cache: NansenCache = { at: now, wallets: prev?.wallets || [], creditsRemaining: remaining, creditsUsed: used, error: "rate_limit" };
-      saveCache(cache);
-      markSource("nansen", false, 0);
-      return { traders: nansenCachedTraders(), fills: [], cache };
+    for (let page = 1; page <= maxPages; page++) {
+      const left = creditsLeft(remaining);
+      if (page > 1 && left != null && left < 5) break;
+      const { res, json, ms, remaining: nextRem, used } = await hit(key, page);
+      lastMs += ms;
+      remaining = nextRem ?? remaining;
+      usedTotal += Number(used || 5) || 5;
+      const detail = json?.message || json?.error || json?.code || res.statusText;
+      if (res.status === 429) {
+        logHttpFailure({ url: UPSTREAM, event: "nansen", source: "nansen", status: 429, ms, detail: "rate_limit" });
+        if (!pages) {
+          const cache: NansenCache = {
+            at: now,
+            wallets: prev?.wallets || [],
+            creditsRemaining: remaining,
+            creditsUsed: String(usedTotal),
+            error: "rate_limit",
+          };
+          saveCache(cache);
+          markSource("nansen", false, 0);
+          return { traders: nansenCachedTraders(), fills: [], cache };
+        }
+        break;
+      }
+      if (!res.ok || !json) {
+        const code = json?.code || String(res.status);
+        logHttpFailure({ url: UPSTREAM, event: "nansen", source: "nansen", status: res.status, ms, detail });
+        if (!pages) {
+          const cache: NansenCache = {
+            at: now,
+            wallets: prev?.wallets || [],
+            creditsRemaining: remaining,
+            creditsUsed: String(usedTotal),
+            error: code === "insufficient_credits" ? "insufficient_credits" : detail || "nansen_fail",
+          };
+          saveCache(cache);
+          markSource("nansen", false, 0);
+          return { traders: nansenCachedTraders(), fills: [], cache };
+        }
+        break;
+      }
+      const rows = Array.isArray(json.data) ? json.data : [];
+      const got = collect(rows, now);
+      fresh.push(...got.wallets);
+      fills.push(...got.fills);
+      pages += 1;
+      const last = json.pagination?.is_last_page ?? rows.length < PER_PAGE;
+      if (last || !rows.length) break;
     }
-    if (!res.ok || !json) {
-      const code = json?.code || String(res.status);
-      logHttpFailure({ url: UPSTREAM, event: "nansen", source: "nansen", status: res.status, ms, detail });
-      const cache: NansenCache = {
-        at: now,
-        wallets: prev?.wallets || [],
-        creditsRemaining: remaining,
-        creditsUsed: used,
-        error: code === "insufficient_credits" ? "insufficient_credits" : detail || "nansen_fail",
-      };
-      saveCache(cache);
-      markSource("nansen", false, 0);
-      return { traders: nansenCachedTraders(), fills: [], cache };
-    }
-    const rows = Array.isArray(json.data) ? json.data : [];
-    const wallets: NansenWallet[] = [];
-    const seen = new Set<string>();
-    const fills: TapeFill[] = [];
-    for (const row of rows) {
-      const fill = fillOf(row);
-      if (fill) fills.push(fill);
-      const chain = chainFromNansen(row.chain);
-      const address = chain === "solana" ? row.trader_address || "" : (row.trader_address || "").toLowerCase();
-      if (!chain || !isWalletOn(chain, address)) continue;
-      const k = walletId(chain, address);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      wallets.push({
-        chain,
-        address,
-        handle: (row.trader_address_label || address.slice(0, 8)).replace(/^@/, ""),
-      });
-    }
+    const before = new Set((prev?.wallets || []).map((w) => walletId(w.chain, w.address)));
+    const wallets = mergeWallets(prev?.wallets || [], fresh, now);
+    const added = wallets.filter((w) => !before.has(walletId(w.chain, w.address))).length;
     const cache: NansenCache = {
       at: now,
       wallets,
+      added,
+      pages,
       creditsRemaining: remaining,
-      creditsUsed: used || "5",
+      creditsUsed: String(usedTotal || 5),
       error: undefined,
     };
     saveCache(cache);
@@ -291,9 +369,9 @@ export async function pullNansenSmart(opts?: { force?: boolean }): Promise<{
       outcome: wallets.length ? "ok" : "empty",
       source: "nansen",
       count: wallets.length,
-      ms,
+      ms: lastMs,
       url: UPSTREAM,
-      detail: nansenChainCounts(wallets) || `credits ${remaining ?? "?"}`,
+      detail: `${nansenChainCounts(wallets) || "ağ yok"} · +${added} yeni · ${pages} sayfa`,
     });
     return { traders: nansenCachedTraders(), fills, cache };
   } catch (err) {

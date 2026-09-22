@@ -53,11 +53,11 @@ export function GmgnExportCard({ watchSol, nansenAt }: { watchSol?: string; nans
     <div className="mt-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4">
       <p className="text-sm font-medium">GMGN bulk export</p>
       <p className="text-xs text-mute">
-        Tüm takip kuyruğu: elle Solana listesi + Nansen roster. KOL/smart feed cüzdanları burada yok. Format{" "}
-        <a className="text-accent hover:underline" href="https://docs.gmgn.ai/index/wallets-import-export" target="_blank" rel="noreferrer">
+        Tüm takip kuyruğu: elle Solana listesi + biriken Nansen roster. GMGN OpenAPI follow listesine yazmaz;{" "}
+        <a className="text-accent hover:underline" href="https://gmgn.ai/follow" target="_blank" rel="noreferrer">
           gmgn.ai/follow
-        </a>
-        : <span className="font-mono">[ {"{ address, name, emoji }"} ]</span>. GMGN ağ sayfasına yapıştır (ağ başına ayrı dosya daha temiz). En fazla {GMGN_IMPORT_MAX} adres.
+        </a>{" "}
+        bulk import JSON’u yapıştır (ağ başına ayrı daha temiz). En fazla {GMGN_IMPORT_MAX} adres. Tape, API key hesabındaki listeyi `follow_wallet` ile okur.
       </p>
       <p className="text-xs text-mute">
         {wallets.length} cüzdan
@@ -85,6 +85,9 @@ export function GmgnExportCard({ watchSol, nansenAt }: { watchSol?: string; nans
         >
           json indir
         </button>
+        <a className="rounded-md border border-line px-3 py-1 text-sm" href="https://gmgn.ai/follow" target="_blank" rel="noreferrer">
+          gmgn.ai/follow
+        </a>
         <button className="rounded-md border border-line px-3 py-1 text-sm" type="button" onClick={() => setOpen((v) => !v)}>
           {open ? "json gizle" : "json göster"}
         </button>
