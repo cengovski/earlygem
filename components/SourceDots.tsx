@@ -1,11 +1,13 @@
 "use client";
 
+import { gmgnFollowConfigured } from "@/lib/gmgn";
 import { sourceStatus } from "@/lib/health";
 import { useRadar } from "./RadarProvider";
 
 export function SourceDots() {
   const { logs } = useRadar();
-  const rows = sourceStatus(logs);
+  const follow = gmgnFollowConfigured();
+  const rows = sourceStatus(logs).filter((row) => !follow || (row.key !== "gmgn_kol" && row.key !== "gmgn_smart"));
   return (
     <div className="flex flex-wrap items-center gap-2 text-[11px]">
       {rows.map((row) => (

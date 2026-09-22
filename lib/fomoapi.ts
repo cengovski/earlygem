@@ -8,10 +8,27 @@ const GAP_MS = 2500;
 const CACHE_MS = 45_000;
 const TAPE_MAX_AGE_MS = 20 * 60_000;
 const PAYWALL_MS = 6 * 60 * 60_000;
+const PAYWALL_KEY = "eg_fomo_paywall";
 
 let lastAt = 0;
 let paywallUntil = 0;
 let alertCache: { at: number; fills: TapeFill[] } | null = null;
+
+function readPaywall() {
+  if (typeof window === "undefined") return paywallUntil;
+  const n = Number(window.localStorage.getItem(PAYWALL_KEY) || 0);
+  return Number.isFinite(n) ? Math.max(paywallUntil, n) : paywallUntil;
+}
+
+function writePaywall(until: number) {
+  paywallUntil = until;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PAYWALL_KEY, String(until));
+  } catch {
+    /* quota */
+  }
+}
 
 export function fomoApiKey() {
   return loadClientKeys().fomo || process.env.FOMOAPI_KEY || process.env.FOMO_API_KEY || "";
@@ -41,7 +58,7 @@ function chainOf(row: { chain?: string; chainId?: number }): ChainId | null {
 export async function fomoGet<T>(path: string, query?: Record<string, string>): Promise<T | null> {
   const key = fomoApiKey();
   if (!key) return null;
-  if (Date.now() < paywallUntil) return null;
+  if (Date.now() < readPaywall()) return null;
   await gate();
   const qs = query ? `?${new URLSearchParams(query).toString()}` : "";
   const url = `${HOST}${path}${qs}`;
@@ -59,7 +76,7 @@ export async function fomoGet<T>(path: string, query?: Record<string, string>): 
       return null;
     }
     if (res.status === 402 || res.status === 401 || res.status === 403) {
-      paywallUntil = Date.now() + PAYWALL_MS;
+      writePaywall(Date.now() + PAYWALL_MS);
       logHttpFailure({
         url,
         event: "fomo",

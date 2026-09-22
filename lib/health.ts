@@ -1,3 +1,4 @@
+import { gmgnCooling, gmgnFollowConfigured } from "./gmgn";
 import { logEvent, type LogEvent } from "./log";
 import type { TapeFill, Trader } from "./types";
 
@@ -49,8 +50,6 @@ export function markSource(key: SourceKey, ok: boolean, count = 0) {
 export function markFeeds(fills: TapeFill[], traders: Trader[]) {
   const flag = (name: string) => fills.filter((f) => f.flags.includes(name)).length;
   const src = (name: string) => traders.filter((t) => t.smartReasons.some((s) => s.includes(name))).length;
-  markSource("gmgn_kol", flag("kol") + src("gmgn") > 0, flag("kol"));
-  markSource("gmgn_smart", flag("smart") > 0, flag("smart"));
   markSource("cabalspy", flag("cabalspy") + src("cabalspy") > 0, flag("cabalspy"));
   markSource("soltrack", flag("soltrack") + src("soltrack") > 0, flag("soltrack"));
   markSource("madeonsol", flag("madeonsol") + src("madeonsol") > 0, flag("madeonsol"));
@@ -59,7 +58,13 @@ export function markFeeds(fills: TapeFill[], traders: Trader[]) {
   markSource("pumpfun", src("pumpfun") > 0, src("pumpfun"));
   markSource("binance", flag("binance") + src("binance") > 0, flag("binance") + src("binance"));
   markSource("nansen", flag("nansen") + src("nansen") > 0, flag("nansen") + src("nansen"));
-  markSource("gmgn_follow", flag("follow") > 0, flag("follow"));
+  const followHits = flag("follow");
+  if (followHits > 0) markSource("gmgn_follow", true, followHits);
+  else if (!(gmgnFollowConfigured() && gmgnCooling())) markSource("gmgn_follow", false, 0);
+  if (!gmgnFollowConfigured()) {
+    markSource("gmgn_kol", flag("kol") + src("gmgn") > 0, flag("kol"));
+    markSource("gmgn_smart", flag("smart") > 0, flag("smart"));
+  }
 }
 
 export function sourceStatus(logs: LogEvent[]) {
