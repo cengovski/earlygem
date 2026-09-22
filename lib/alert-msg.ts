@@ -1,5 +1,5 @@
 import { formatTierLine, tierFromViews } from "./tier";
-import type { ChainId, TapeFill } from "./types";
+import type { ChainId, TapeFill, Trader } from "./types";
 
 export type AlertHit = {
   token: string;
@@ -84,7 +84,7 @@ function esc(s: string) {
 
 export type BuyerSrc = "KOL" | "SMART" | "NANSEN" | "BINANCE" | "PUMP" | "AXIOM";
 
-const SRC_RANK: Record<BuyerSrc, number> = { NANSEN: 6, AXIOM: 5, PUMP: 4, BINANCE: 3, KOL: 2, SMART: 1 };
+export const SRC_RANK: Record<BuyerSrc, number> = { NANSEN: 6, AXIOM: 5, PUMP: 4, BINANCE: 3, KOL: 2, SMART: 1 };
 const SRC_ORDER: BuyerSrc[] = ["KOL", "SMART", "NANSEN", "BINANCE", "PUMP", "AXIOM"];
 
 export function traderSourceFlags(trader: { kind?: string | null; smartReasons?: string[] }) {
@@ -94,6 +94,30 @@ export function traderSourceFlags(trader: { kind?: string | null; smartReasons?:
     if (s.startsWith("src:")) tags.add(s.slice(4).toLowerCase());
   }
   return [...tags];
+}
+
+export function attachRosterFlags(fills: TapeFill[], traders: Trader[]): TapeFill[] {
+  if (!traders.length) return fills;
+  const byHandle = new Map<string, string[]>();
+  const byWallet = new Map<string, string[]>();
+  const add = (map: Map<string, string[]>, key: string, src: string[]) => {
+    if (!key || !src.length) return;
+    map.set(key, [...new Set([...(map.get(key) || []), ...src])]);
+  };
+  for (const t of traders) {
+    const src = traderSourceFlags(t);
+    add(byHandle, (t.handle || "").toLowerCase().replace(/^@/, ""), src);
+    if (t.solana) add(byWallet, t.solana, src);
+    if (t.address) add(byWallet, t.address.toLowerCase(), src);
+  }
+  return fills.map((row) => {
+    const extra = [
+      ...(row.wallet ? byWallet.get(row.wallet) || byWallet.get(row.wallet.toLowerCase()) || [] : []),
+      ...(row.handle ? byHandle.get(row.handle.toLowerCase().replace(/^@/, "")) || [] : []),
+    ];
+    if (!extra.length) return row;
+    return { ...row, flags: [...new Set([...row.flags, ...extra])] };
+  });
 }
 
 function sourceHay(row: { flags?: string[]; smartKind?: string | null; smartReasons?: string[] }) {

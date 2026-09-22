@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { attachRosterFlags } from "@/lib/alert-msg";
 import { markFeeds } from "@/lib/health";
 import { installBrowserFaultHooks, logEvent, onLog, recentLogs, type LogEvent } from "@/lib/log";
 import { ingestPool, readPool } from "@/lib/pool";
@@ -31,7 +32,8 @@ const EMPTY: RadarState = {
 const Ctx = createContext<RadarState>(EMPTY);
 
 function withPool(bundle: RadarBundle & { meta: RadarMeta }, incoming: typeof bundle.tape) {
-  const tape = ingestPool([...(incoming || []), ...(bundle.solTape || [])], WINDOW_MIN);
+  const stamped = attachRosterFlags([...(incoming || []), ...(bundle.solTape || [])], bundle.traders || []);
+  const tape = ingestPool(stamped, WINDOW_MIN);
   const solTape = tape.filter((row) => row.chain === "solana");
   const smartTape = tape.filter((r) => r.smartKind === "kol" || r.smartKind === "smart").slice(0, 80);
   return { ...bundle, tape, solTape, smartTape };

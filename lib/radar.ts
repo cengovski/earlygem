@@ -1,4 +1,4 @@
-import { isWrappedBase } from "./alert-msg";
+import { attachRosterFlags, isWrappedBase } from "./alert-msg";
 import { KNOWN_WALLETS } from "./known";
 import { featuredGems, rankGems } from "./score";
 import { attachGmgnSecurity } from "./scan";
@@ -173,7 +173,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   }
 
   const index = traderIndex(traders);
-  const tape = uniqueFills(
+  const pulseTape = uniqueFills(
     tapeRaw.filter(keepFill).map((row) => ({
       ...row,
       smartKind: row.smartKind || (row.handle ? index.get(row.handle.toLowerCase())?.kind || null : null),
@@ -182,7 +182,8 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
 
   const feeds = await withTimeout(fetchExternalFeeds(), 12_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
   traders = mergeTraders(traders, feeds.traders);
-  const solTape = uniqueFills(feeds.fills.filter(keepFill)).sort((a, b) => b.ts - a.ts);
+  const solTape = uniqueFills(attachRosterFlags(feeds.fills.filter(keepFill), traders)).sort((a, b) => b.ts - a.ts);
+  const tape = uniqueFills(attachRosterFlags(pulseTape, traders));
   const solGems = gemsFromSolTape(solTape);
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 

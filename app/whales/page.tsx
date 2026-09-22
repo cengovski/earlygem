@@ -20,7 +20,9 @@ export default function WhalesPage() {
       <PulseGate>
         {(bundle) => {
           const rows = bundle.traders.filter((t) => t.kind === "kol" || t.kind === "smart" || srcs(t.smartReasons).length);
-          const tape = bundle.tape.filter((r) => r.flags.some((f) => ["kol", "smart", "axiom", "pumpfun", "gmgn"].includes(f)));
+          const tape = bundle.tape.filter((r) =>
+            r.flags.some((f) => ["kol", "smart", "axiom", "pumpfun", "gmgn", "nansen", "binance"].includes(f)),
+          );
           return (
             <>
               <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">

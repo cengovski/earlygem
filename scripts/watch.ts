@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { attachRosterFlags } from "../lib/alert-msg";
 import { runAlertPass } from "../lib/alert-engine";
 import { persistInstall, persistSet } from "../lib/persist";
 import { maybeFlushHourDigest } from "../lib/hour-client";
@@ -80,7 +81,7 @@ function pingTermux(text: string) {
 async function tick(n: number) {
   const t0 = Date.now();
   const bundle = await fetchRadarBundle({ force: true });
-  const tape = ingestPool([...(bundle.tape || []), ...(bundle.solTape || [])], WINDOW_MIN);
+  const tape = ingestPool(attachRosterFlags([...(bundle.tape || []), ...(bundle.solTape || [])], bundle.traders || []), WINDOW_MIN);
   await runAlertPass(tape);
   const hour = await maybeFlushHourDigest();
   const line = `#${n} tape ${tape.length} · pulse ${bundle.tape.length} · sol ${bundle.solTape?.length || 0} · ${Date.now() - t0}ms${hour.sent ? " · saatlik gitti" : ""}`;

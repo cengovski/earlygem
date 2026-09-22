@@ -1,3 +1,4 @@
+import { attachRosterFlags } from "./alert-msg";
 import { fetchBinanceFeeds } from "./binance";
 import { fetchFomoAlerts } from "./fomoapi";
 import { fetchExtraFeeds } from "./extra-feeds";
@@ -292,17 +293,22 @@ export async function fetchExternalFeeds(): Promise<{ fills: TapeFill[]; traders
   ]);
   const watch = mergeFollow(watchTraders(), nansen.traders);
   const follow = await fetchGmgnWalletTape(mergeTraders(watch, gmgnParts.flatMap((p) => p.traders)));
-  const fills = uniqueFills([
-    ...gmgnParts.flatMap((p) => p.fills),
-    ...follow,
-    ...nansen.fills,
-    ...bn.fills,
-    ...fomo,
-    ...extra.fills,
-  ]).sort((a, b) => b.ts - a.ts);
   const traders = mergeTraders(
     watch,
     [...gmgnParts.flatMap((p) => p.traders), ...pump, ...bn.traders, ...extra.traders],
   );
+  const fills = uniqueFills(
+    attachRosterFlags(
+      [
+        ...nansen.fills,
+        ...bn.fills,
+        ...follow,
+        ...gmgnParts.flatMap((p) => p.fills),
+        ...fomo,
+        ...extra.fills,
+      ],
+      traders,
+    ),
+  ).sort((a, b) => b.ts - a.ts);
   return { fills, traders };
 }
