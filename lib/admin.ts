@@ -49,6 +49,7 @@ export function clearSession() {
 }
 
 export async function sessionOk(req: Request) {
+  if (!adminConfigured() && process.env.NODE_ENV !== "production") return true;
   const raw = req.headers.get("cookie") || "";
   const hit = raw.split(";").map((s) => s.trim()).find((s) => s.startsWith(`${COOKIE}=`));
   if (!hit) return false;
