@@ -11,7 +11,7 @@ import type { RadarBundle, RadarMeta } from "@/lib/store";
 import { runAlertPass } from "@/lib/alert-engine";
 import type { TapeFill } from "@/lib/types";
 import { maybeFlushHourDigest } from "@/lib/hour-client";
-import { installGmgnTrackBridge } from "@/lib/gmgn-bridge";
+import { installGmgnTrackBridge, ingestGmgnClipboard, pullGmgnIngest } from "@/lib/gmgn-bridge";
 import { WINDOW_MIN } from "@/lib/window";
 
 const POLL_MS = 25_000;
@@ -45,9 +45,37 @@ function withPool(bundle: RadarBundle & { meta: RadarMeta }, incoming: typeof bu
   return withTape(bundle, ingestPool(stamped, WINDOW_MIN));
 }
 
+let mcapBusy = false;
+let mcapAt = 0;
+
+function overlayMcaps(latest: TapeFill[], hydrated: TapeFill[]) {
+  const byToken = new Map<string, TapeFill>();
+  for (const row of hydrated) byToken.set(`${row.chain}:${row.token.toLowerCase()}`, row);
+  return latest.map((row) => {
+    const hit = byToken.get(`${row.chain}:${row.token.toLowerCase()}`);
+    if (!hit) return row;
+    return {
+      ...row,
+      mcap: hit.mcap ?? row.mcap,
+      liquidity: hit.liquidity ?? row.liquidity,
+      change24: hit.change24 ?? row.change24,
+      symbol: row.symbol && row.symbol !== "???" ? row.symbol : hit.symbol,
+      name: row.name || hit.name,
+    };
+  });
+}
+
 async function refreshMcaps(tape: TapeFill[]) {
-  await runAlertPass(tape);
-  return writePool(await hydrateFills(readPool(WINDOW_MIN), 40));
+  if (mcapBusy || Date.now() - mcapAt < 12_000) return readPool(WINDOW_MIN);
+  mcapBusy = true;
+  try {
+    await runAlertPass(readPool(WINDOW_MIN));
+    mcapAt = Date.now();
+    const hydrated = await hydrateFills(tape, 30);
+    return writePool(overlayMcaps(readPool(WINDOW_MIN), hydrated));
+  } finally {
+    mcapBusy = false;
+  }
 }
 
 export function RadarProvider({ children }: { children: React.ReactNode }) {
@@ -161,20 +189,31 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     }, 30_000);
     const onKeys = () => {
       const tape = readPool(WINDOW_MIN);
+      setBundle((prev) => (prev ? withTape(prev, tape) : prev));
       if (tape.length) void refreshMcaps(tape).then((next) => setBundle((prev) => (prev ? withTape(prev, next) : prev)));
     };
     window.addEventListener("eg-keys", onKeys);
     window.addEventListener("storage", onKeys);
     window.addEventListener("eg-gmgn-track", onKeys);
+    const ingestPoll = window.setInterval(() => {
+      void pullGmgnIngest();
+    }, 2000);
+    const onPointer = () => {
+      void ingestGmgnClipboard();
+    };
+    window.addEventListener("pointerdown", onPointer);
+    void pullGmgnIngest();
     void maybeFlushHourDigest();
     return () => {
       window.clearInterval(poll);
       window.clearInterval(watch);
       window.clearInterval(hour);
+      window.clearInterval(ingestPoll);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("eg-keys", onKeys);
       window.removeEventListener("storage", onKeys);
       window.removeEventListener("eg-gmgn-track", onKeys);
+      window.removeEventListener("pointerdown", onPointer);
     };
   }, [bump, loading]);
 

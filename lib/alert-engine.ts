@@ -1,6 +1,6 @@
 import { alertKeyboard, alertMcapSkipReason, buyerSource, formatAlertHtml, isWrappedBase, MAX_ALERT_MCAP, rememberBuyer, skipAlertToken, type BuyerSrc } from "./alert-msg";
 import { attachHoneypot } from "./alert-honeypot";
-import { fetchDexMeta, hydrateHit } from "./dexmeta";
+import { fetchDexMeta, hydrateHit, warmDexMeta } from "./dexmeta";
 import { noteLocalHit } from "./hour-client";
 import { usd } from "./format";
 import { logEvent } from "./log";
@@ -242,15 +242,14 @@ async function fireOne(row: NearRow, rule: AlertRule) {
 export async function runAlertPass(tape: TapeFill[]) {
   const rule = loadRule();
   const rows = clusterNear(tape, rule);
-  await Promise.all(
-    rows.map(async (row) => {
-      const meta = await fetchDexMeta(row.chain, row.token, ALERT_MCAP_TTL_MS);
-      if (meta?.mcap) {
-        if (!row.mcapFirst) row.mcapFirst = meta.mcap;
-        row.mcapLast = meta.mcap;
-      }
-    }),
-  );
+  await warmDexMeta(rows, ALERT_MCAP_TTL_MS);
+  for (const row of rows) {
+    const meta = await fetchDexMeta(row.chain, row.token, ALERT_MCAP_TTL_MS);
+    if (meta?.mcap) {
+      if (!row.mcapFirst) row.mcapFirst = meta.mcap;
+      row.mcapLast = meta.mcap;
+    }
+  }
   const ready = readyRows(rows, rule);
   for (const row of ready) {
     const ago = telegramSentAgo(row.key);

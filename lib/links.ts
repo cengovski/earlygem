@@ -1,13 +1,10 @@
 import type { ChainId } from "./types";
 import { dexUrl } from "./format";
+import { gmgnChainSlug } from "./gmgn-chain";
 
 /** GMGN path: gmgn.ai/{slug}/token/{address} */
 function gmgnSlug(chain: ChainId): string {
-  if (chain === "solana") return "sol";
-  if (chain === "ethereum") return "eth";
-  if (chain === "robinhood") return "robinhood";
-  if (chain === "monad") return "monad";
-  return chain;
+  return gmgnChainSlug(chain);
 }
 
 /** BasedBot web: basedbot.app/token/{slug}/{address} */

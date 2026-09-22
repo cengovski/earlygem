@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { AlertRadar } from "@/components/AlertRadar";
+import { GmgnConnect } from "@/components/GmgnConnect";
 import { Kpis } from "@/components/Kpis";
 import { PulseGate } from "@/components/PulseGate";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -14,6 +15,7 @@ function TapeInner() {
   const view = useSearchParams().get("view") || "all";
   return (
     <Shell title="Canlı tape" subtitle="20 dk tarayıcı havuzu. Çakışan fill’ler (tx / cüzdan+token+usd) elenir, eşik dolunca alarm çıkar.">
+      <GmgnConnect />
       <PulseGate>
         {(bundle) => {
           const sol = bundle.solTape || [];

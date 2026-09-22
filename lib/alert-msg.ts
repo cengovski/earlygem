@@ -1,4 +1,5 @@
 import { formatTierLine, tierFromViews } from "./tier";
+import { gmgnChainSlug } from "./gmgn-chain";
 import type { ChainId, TapeFill, Trader } from "./types";
 
 export type AlertHit = {
@@ -215,9 +216,7 @@ function money(n: number | null | undefined) {
 }
 
 function gmgnChain(chain: ChainId) {
-  if (chain === "solana") return "sol";
-  if (chain === "ethereum") return "eth";
-  return chain;
+  return gmgnChainSlug(chain);
 }
 
 function basedChain(chain: ChainId) {
