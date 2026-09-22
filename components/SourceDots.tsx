@@ -1,13 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { gmgnFollowConfigured } from "@/lib/gmgn";
 import { sourceStatus } from "@/lib/health";
 import { useRadar } from "./RadarProvider";
 
 export function SourceDots() {
   const { logs } = useRadar();
-  const follow = gmgnFollowConfigured();
-  const rows = sourceStatus(logs).filter((row) => !follow || (row.key !== "gmgn_kol" && row.key !== "gmgn_smart"));
+  const [followOnly, setFollowOnly] = useState(false);
+  useEffect(() => {
+    setFollowOnly(gmgnFollowConfigured());
+  }, [logs]);
+  const rows = sourceStatus(logs).filter((row) => !followOnly || (row.key !== "gmgn_kol" && row.key !== "gmgn_smart"));
   return (
     <div className="flex flex-wrap items-center gap-2 text-[11px]">
       {rows.map((row) => (

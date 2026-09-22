@@ -292,7 +292,7 @@ export function installBrowserFaultHooks() {
   });
   window.addEventListener("unhandledrejection", (ev) => {
     const msg = ev.reason instanceof Error ? ev.reason.message : String(ev.reason || "unhandledrejection");
-    if (/hydration|cancel/i.test(msg)) return;
+    if (/hydration|cancel|minified react error #41[0-9]|#418|#423|#425/i.test(msg)) return;
     logEvent({
       level: "error",
       event: "unhandled",
@@ -303,7 +303,7 @@ export function installBrowserFaultHooks() {
   });
   window.addEventListener("error", (ev) => {
     const msg = ev.message || "window.error";
-    if (/script error|hydration/i.test(msg)) return;
+    if (/script error|hydration|minified react error #41[0-9]|#418|#423|#425/i.test(msg)) return;
     logEvent({
       level: "error",
       event: "window",

@@ -117,6 +117,10 @@ export function gmgnCooling() {
   return !laneReady("vps") && !laneReady("pc");
 }
 
+export function gmgnRateCooling() {
+  return Date.now() < coolUntil.vps || Date.now() < coolUntil.pc;
+}
+
 /** VPS (key 2 + /api/gmgn) then PC (key 1 + laptop IP), then the other way. A 429 only cools that lane. */
 export async function gmgnRequest(
   path: string,
@@ -162,14 +166,14 @@ export async function gmgnRequest(
         }
       }
       const json = await hitLane(lane, path, params, signature);
+      if (json && typeof json === "object") return json;
       if (json === "rate") return null;
-      if (json) return json;
     }
     return null;
   });
 }
 
-async function hitLane(lane: Lane, path: string, params: URLSearchParams, signature = ""): Promise<Record<string, unknown> | "rate" | null> {
+async function hitLane(lane: Lane, path: string, params: URLSearchParams, signature = ""): Promise<Record<string, unknown> | "rate" | "banned" | null> {
   const key = gmgnLaneKeys()[lane];
   if (!key) return null;
   await gate(lane);
@@ -207,7 +211,7 @@ async function hitLane(lane: Lane, path: string, params: URLSearchParams, signat
         ms,
         detail: `${tag} ${errText || "rate_limit"} · ${banned ? "12dk" : "3dk"} soğuma`,
       });
-      return "rate";
+      return banned ? "banned" : "rate";
     }
     if (!res.ok || !json) {
       if (res.status === 401 || res.status === 403) cool(lane, 60_000);

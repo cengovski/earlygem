@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PulseGate } from "@/components/PulseGate";
 import { RefreshButton } from "@/components/RefreshButton";
 import { Shell } from "@/components/Shell";
@@ -14,12 +14,15 @@ function kindLabel(row: LogEvent) {
 export default function LogsPage() {
   const { logs } = useRadar();
   const [copied, setCopied] = useState("");
+  const [stored, setStored] = useState<LogEvent[]>([]);
+  useEffect(() => {
+    setStored(recentFaults(80));
+  }, [logs]);
   const faults = useMemo(() => {
     const live = logs.filter(isFault);
-    const stored = recentFaults(80);
     const seen = new Set(live.map((r) => `${r.ts}|${r.event}|${r.url}|${r.detail}`));
     return [...live, ...stored.filter((r) => !seen.has(`${r.ts}|${r.event}|${r.url}|${r.detail}`))];
-  }, [logs]);
+  }, [logs, stored]);
   const live = logs.filter((row) => row.event !== "source" || row.outcome !== "empty" || row.detail === "pulse");
 
   async function copyReport() {

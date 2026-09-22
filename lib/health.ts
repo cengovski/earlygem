@@ -1,4 +1,4 @@
-import { gmgnCooling, gmgnFollowConfigured } from "./gmgn";
+import { gmgnFollowConfigured, gmgnRateCooling } from "./gmgn";
 import { logEvent, type LogEvent } from "./log";
 import type { TapeFill, Trader } from "./types";
 
@@ -60,7 +60,7 @@ export function markFeeds(fills: TapeFill[], traders: Trader[]) {
   markSource("nansen", flag("nansen") + src("nansen") > 0, flag("nansen") + src("nansen"));
   const followHits = flag("follow");
   if (followHits > 0) markSource("gmgn_follow", true, followHits);
-  else if (!(gmgnFollowConfigured() && gmgnCooling())) markSource("gmgn_follow", false, 0);
+  else if (!(gmgnFollowConfigured() && gmgnRateCooling())) markSource("gmgn_follow", false, 0);
   if (!gmgnFollowConfigured()) {
     markSource("gmgn_kol", flag("kol") + src("gmgn") > 0, flag("kol"));
     markSource("gmgn_smart", flag("smart") > 0, flag("smart"));
