@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { gmgnSniffSource } from "@/lib/gmgn-sniff";
 
 const LOG_KEY = "eg_connect_log";
-const GMGN = "https://gmgn.ai/";
+const OK_KEY = "eg_connect_ok";
+const GMGN = "https://gmgn.ai/follow";
 
 function loadLog(): string[] {
   try {
@@ -46,7 +47,18 @@ export function GmgnConnect() {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("hazır");
   const [busy, setBusy] = useState(false);
+  const [linked, setLinked] = useState(false);
   const [sniff, setSniff] = useState("");
+
+  function markLinked() {
+    setLinked(true);
+    setStatus("bağlandı");
+    try {
+      sessionStorage.setItem(OK_KEY, "1");
+    } catch {
+      /* private mode */
+    }
+  }
 
   function push(line: string) {
     const row = `${new Date().toISOString().slice(11, 19)} ${line}`;
@@ -64,11 +76,20 @@ export function GmgnConnect() {
 
   useEffect(() => {
     setLog(loadLog());
+    try {
+      if (sessionStorage.getItem(OK_KEY) === "1") {
+        setLinked(true);
+        setStatus("bağlandı");
+      }
+    } catch {
+      /* private mode */
+    }
     const onLog = (ev: Event) => {
-      const line = (ev as CustomEvent<string>).detail;
+      const line = String((ev as CustomEvent<string>).detail || "");
       if (!line) return;
-      push(String(line));
-      if (/TRACK batch|havuz \+/.test(String(line))) setStatus("canlı");
+      push(line);
+      if (/v5\.6 takildi|v5\.6 follow attach/.test(line)) markLinked();
+      else if (/TRACK batch|havuz \+/.test(line)) setStatus((prev) => (prev === "bağlandı" ? prev : "canlı"));
     };
     window.addEventListener("eg-gmgn-log", onLog);
     return () => window.removeEventListener("eg-gmgn-log", onLog);
@@ -113,8 +134,8 @@ export function GmgnConnect() {
         push(`çapraz köken (${errText(err)}) — eval deneniyor`);
         try {
           (win as Window & { eval: (code: string) => unknown }).eval(code);
-          push("eval oldu");
-          setStatus("enjekte");
+          push("eval oldu — gmgn.ai/follow enjekte edildi");
+          markLinked();
           injected = true;
           break;
         } catch (evalErr) {
@@ -167,7 +188,7 @@ export function GmgnConnect() {
         >
           {busy ? "bağlanıyor" : "CONNECT"}
         </button>
-        <span className="font-mono text-[11px] text-mute">{status}</span>
+        <span className={linked ? "font-mono text-[11px] text-buy" : "font-mono text-[11px] text-mute"}>{status}</span>
         <button type="button" className="rounded-md border border-line px-2 py-1 text-[11px] text-mute" onClick={() => setOpen((v) => !v)}>
           {open ? "logu gizle" : "log"}
         </button>
@@ -189,9 +210,15 @@ export function GmgnConnect() {
           logu sil
         </button>
       </div>
-      <p className="mt-2 text-[11px] text-mute">
-        gmgn Track sekmesini açar ve v5.6 kodunu enjekte etmeyi dener. Tarayıcı çapraz kökeni keserse hata burada kalır; kod panoya düşer, Track’i bir kez yenileyip console’a yapıştır.
-      </p>
+      {linked ? (
+        <p className="mt-2 rounded-md border border-buy bg-[#1d3a18]/80 px-3 py-2 text-sm text-buy">
+          GMGN follow bağlandı. https://gmgn.ai/follow enjekte edildi, Track alımları bu sekmeye geliyor.
+        </p>
+      ) : (
+        <p className="mt-2 text-[11px] text-mute">
+          https://gmgn.ai/follow açar ve v5.6 kodunu enjekte etmeyi dener. Tutarsa burada “bağlandı” yazar. Tarayıcı keserse hata logda kalır; kod panoya düşer, follow sekmesini bir kez yenileyip console’a yapıştır.
+        </p>
+      )}
       {open ? (
         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-line bg-[#12110c] p-2 font-mono text-[10px] text-ink">
           {log.length ? log.join("\n") : "henüz kayıt yok"}
