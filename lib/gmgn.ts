@@ -1,10 +1,10 @@
 import { traderSourceFlags } from "./alert-msg";
-import { clientGmgnKey } from "./client-keys";
+import { gmgnLaneKeys } from "./client-keys";
 import { logHttpFailure } from "./log";
 import type { ChainId, SmartKind, TapeFill, Trader } from "./types";
 
 const HOST = "https://openapi.gmgn.ai";
-const MIN_GAP_MS = 900;
+const MIN_GAP_MS = 800;
 const MAX_JOBS = 3;
 const MIN_USD = 8;
 const MAX_AGE_MS = 8 * 60 * 60 * 1000;
@@ -12,8 +12,11 @@ const STOCK = /^(googlb?|gmeb?|qqqb?|nvdab?|tslab?|aaplb?|msftb?|metab?|amznb?|g
 
 export const GMGN_FOMO_EVM: ChainId[] = ["robinhood", "base", "bsc", "ethereum", "monad"];
 
+type Lane = "vps" | "pc";
+
 export function gmgnApiKey() {
-  return clientGmgnKey() || process.env.GMGN_API_KEY || "";
+  const lanes = gmgnLaneKeys();
+  return lanes.pc || lanes.vps;
 }
 
 export function gmgnConfigured() {
@@ -52,21 +55,44 @@ type GmgnEnvelope = {
   data?: { activities?: GmgnActivity[]; list?: GmgnActivity[] };
 };
 
-let lastAt = 0;
-let coolUntil = 0;
+const lastAt: Record<Lane, number> = { vps: 0, pc: 0 };
+const coolUntil: Record<Lane, number> = { vps: 0, pc: 0 };
+let turn = 0;
 let evmCursor = 0;
 
-async function gate() {
-  const wait = MIN_GAP_MS - (Date.now() - lastAt);
+async function gate(lane: Lane) {
+  const wait = MIN_GAP_MS - (Date.now() - lastAt[lane]);
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  lastAt = Date.now();
+  lastAt[lane] = Date.now();
 }
 
-/** Browser hits /api/gmgn so Cloudflare/Opera cannot kill openapi.gmgn.ai with Failed to fetch. */
+function cool(lane: Lane, ms: number) {
+  coolUntil[lane] = Math.max(coolUntil[lane], Date.now() + ms);
+}
+
+function proxyBase() {
+  const custom = gmgnLaneKeys().proxy;
+  if (custom) return custom;
+  if (typeof window !== "undefined") return "/api/gmgn";
+  return "";
+}
+
+function laneReady(lane: Lane) {
+  if (Date.now() < coolUntil[lane]) return false;
+  if (!gmgnLaneKeys()[lane]) return false;
+  if (lane === "vps" && !proxyBase() && typeof window === "undefined") return false;
+  return true;
+}
+
+function laneOrder(): Lane[] {
+  const prefer: Lane = turn++ % 2 === 0 ? "vps" : "pc";
+  const next: Lane[] = prefer === "vps" ? ["vps", "pc"] : ["pc", "vps"];
+  return next.filter(laneReady);
+}
+
+/** VPS (key 2 + /api/gmgn) then PC (key 1 + laptop IP), then the other way. A 429 only cools that lane. */
 export async function gmgnRequest(path: string, query: Record<string, string | number | undefined>): Promise<Record<string, unknown> | null> {
-  const key = gmgnApiKey();
-  if (!key) return null;
-  if (Date.now() < coolUntil) return null;
+  if (!gmgnConfigured()) return null;
   const params = new URLSearchParams();
   for (const [k, value] of Object.entries(query)) {
     if (value == null || value === "") continue;
@@ -74,37 +100,50 @@ export async function gmgnRequest(path: string, query: Record<string, string | n
   }
   params.set("timestamp", String(Math.floor(Date.now() / 1000)));
   params.set("client_id", crypto.randomUUID());
-  await gate();
+  const lanes = laneOrder();
+  for (const lane of lanes) {
+    const json = await hitLane(lane, path, params);
+    if (json) return json;
+  }
+  return null;
+}
+
+async function hitLane(lane: Lane, path: string, params: URLSearchParams): Promise<Record<string, unknown> | null> {
+  const key = gmgnLaneKeys()[lane];
+  if (!key) return null;
+  await gate(lane);
   const upstream = `${HOST}${path}?${params.toString()}`;
-  const url =
-    typeof window !== "undefined" ? `/api/gmgn?path=${encodeURIComponent(path)}&${params.toString()}` : upstream;
+  const viaProxy = lane === "vps";
+  const proxy = proxyBase();
+  const url = viaProxy && proxy ? `${proxy}?path=${encodeURIComponent(path)}&${params.toString()}` : upstream;
   const started = Date.now();
   try {
     const res = await fetch(url, {
-      headers:
-        typeof window !== "undefined"
-          ? { "x-eg-gmgn": key, Accept: "application/json" }
-          : { "X-APIKEY": key, Accept: "application/json" },
+      headers: viaProxy && proxy ? { "x-eg-gmgn": key, Accept: "application/json" } : { "X-APIKEY": key, Accept: "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
     const ms = Date.now() - started;
     const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
     const errText = typeof json?.error === "string" ? json.error : "";
+    const tag = `${lane} ${viaProxy ? "proxy" : "direct"}`;
     if (res.status === 429 || errText === "RATE_LIMIT_EXCEEDED" || errText === "RATE_LIMIT_BANNED") {
-      coolUntil = Date.now() + 20_000;
-      logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", status: 429, ms, detail: errText || "rate_limit" });
+      cool(lane, errText === "RATE_LIMIT_BANNED" ? 180_000 : 25_000);
+      logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", status: 429, ms, detail: `${tag} ${errText || "rate_limit"}` });
       return null;
     }
     if (!res.ok || !json) {
-      if (res.status === 401 || res.status === 403) coolUntil = Date.now() + 60_000;
-      logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", status: res.status, ms, detail: errText || res.statusText });
+      if (res.status === 401 || res.status === 403) cool(lane, 60_000);
+      else cool(lane, 15_000);
+      logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", status: res.status, ms, detail: `${tag} ${errText || res.statusText}` });
       return null;
     }
     return json;
   } catch (err) {
-    coolUntil = Date.now() + 45_000;
-    logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", err, ms: Date.now() - started });
+    const ms = Date.now() - started;
+    const msg = err instanceof Error ? err.message : "fail";
+    cool(lane, /failed to fetch/i.test(msg) ? 120_000 : 20_000);
+    logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", err, ms, detail: `${lane} ${viaProxy ? "proxy" : "direct"} ${msg}` });
     return null;
   }
 }

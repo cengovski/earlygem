@@ -229,6 +229,7 @@ function configuredList() {
     const raw = JSON.parse(localStorage.getItem("eg_client_keys") || "{}") as Record<string, string>;
     const flags: string[] = [];
     if (raw.gmgn) flags.push("gmgn");
+    if (raw.gmgn2) flags.push("gmgn2");
     if (raw.binanceKey && raw.binanceSecret) flags.push("binance");
     if (raw.fomo) flags.push("fomo");
     if (raw.cabalspy) flags.push("cabalspy");

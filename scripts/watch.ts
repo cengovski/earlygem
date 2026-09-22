@@ -40,6 +40,8 @@ function applyEnv(keys: KeyFile) {
   if (keys.telegramBot) process.env.TELEGRAM_BOT_TOKEN = keys.telegramBot;
   if (keys.telegramChat) process.env.TELEGRAM_CHAT_ID = keys.telegramChat;
   if (keys.gmgn) process.env.GMGN_API_KEY = keys.gmgn;
+  if (keys.gmgn2) process.env.GMGN_API_KEY_2 = keys.gmgn2;
+  if (keys.gmgnProxy) process.env.GMGN_PROXY = keys.gmgnProxy;
   if (keys.fomo) process.env.FOMOAPI_KEY = keys.fomo;
   if (keys.binanceKey) process.env.BINANCE_WEB3_API_KEY = keys.binanceKey;
   if (keys.goplus) process.env.GOPLUS_API_KEY = keys.goplus;
