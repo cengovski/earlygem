@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { AlertRadar } from "@/components/AlertRadar";
+import { GmgnConnect } from "@/components/GmgnConnect";
 import { Kpis } from "@/components/Kpis";
 import { PulseGate } from "@/components/PulseGate";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -20,6 +21,7 @@ function TapeInner() {
           const rows = view === "sol" ? sol : view === "smart" ? bundle.smartTape : bundle.tape;
           return (
             <>
+              <GmgnConnect />
               <SourceBanner meta={bundle.meta} />
               <Kpis status={bundle.status} extra={[{ label: "satır", value: String(rows.length) }, { label: "SOL fill", value: String(sol.length) }]} />
               <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">

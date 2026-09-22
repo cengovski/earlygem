@@ -1,7 +1,9 @@
+import { detectDexChains, resolveGmgnChain } from "./gmgn-chain";
 import { markSource } from "./health";
 import { ingestPool, readPool } from "./pool";
 import { logEvent } from "./log";
-import type { ChainId, SmartKind, TapeFill } from "./types";
+import { fillKey } from "./tape-key";
+import type { SmartKind, TapeFill } from "./types";
 import { WINDOW_MIN } from "./window";
 
 const EG_ORIGINS = new Set([
@@ -10,17 +12,12 @@ const EG_ORIGINS = new Set([
   "https://app.gmgn.ai",
 ]);
 
-function chainOf(raw: string | undefined, token = ""): ChainId {
-  const s = (raw || "").toLowerCase();
-  if (s === "sol" || s === "solana") return "solana";
-  if (s === "bsc" || s === "bnb") return "bsc";
-  if (s === "base") return "base";
-  if (s === "eth" || s === "ethereum") return "ethereum";
-  if (s === "rh" || s === "robinhood") return "robinhood";
-  if (s === "monad") return "monad";
-  if (String(token).startsWith("0x")) return "ethereum";
-  return "solana";
+function noteGmgn(line: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("eg-gmgn-log", { detail: line }));
 }
+
+type Draft = { fill: TapeFill; lock: boolean; raw: string };
 
 export function parseGmgnTrackFills(raw: unknown): Record<string, unknown>[] {
   let data: unknown = raw;
@@ -46,42 +43,52 @@ export function parseGmgnTrackFills(raw: unknown): Record<string, unknown>[] {
   return [];
 }
 
-function asFill(row: Record<string, unknown>): TapeFill | null {
+function asFill(row: Record<string, unknown>): Draft | null {
   const side = String(row.side || "").toLowerCase();
   if (side !== "buy" && side !== "sell") return null;
   const token = String(row.token || "");
   if (!token) return null;
   const ts = Number(row.ts || 0);
   if (!ts) return null;
+  const raw = String(row.chainRaw || row.n || "");
+  const locked = resolveGmgnChain(raw);
+  const fromPage = Boolean(row.fromPage) && !row.guessed ? resolveGmgnChain(String(row.chain || "")) : null;
+  const chain = locked || fromPage || (token.startsWith("0x") || token.startsWith("0X") ? "unknown" : "solana");
   const flags = Array.isArray(row.flags) ? row.flags.map(String) : ["gmgn", "follow", "track"];
   if (!flags.includes("follow")) flags.push("follow");
   if (!flags.includes("gmgn")) flags.push("gmgn");
+  if (locked || fromPage) flags.push("chain-locked");
+  const tx = row.tx ? String(row.tx) : "";
   return {
-    id: String(row.id || `gmgn-live-${row.tx || token}-${ts}`),
-    ts,
-    chain: chainOf(String(row.chain || ""), token),
-    side: side === "sell" ? "sell" : "buy",
-    usd: Number(row.usd || 0),
-    amount: Number(row.amount || 0),
-    price: row.price == null ? null : Number(row.price) || null,
-    token,
-    symbol: String(row.symbol || "???").trim(),
-    name: String(row.name || row.symbol || "???").trim(),
-    mcap: row.mcap == null ? null : Number(row.mcap) || null,
-    liquidity: null,
-    change24: null,
-    pairUrl: row.pairUrl ? String(row.pairUrl) : null,
-    imageUrl: row.imageUrl ? String(row.imageUrl) : null,
-    wallet: row.wallet ? String(row.wallet) : null,
-    handle: row.handle ? String(row.handle) : "wallet",
-    followers: null,
-    profileUrl: row.profileUrl ? String(row.profileUrl) : null,
-    rank: null,
-    tx: row.tx ? String(row.tx) : null,
-    firstBuy: Boolean(row.firstBuy) || Number(row.ooc) === 1,
-    flags,
-    source: "dexscreener",
-    smartKind: (row.smartKind as SmartKind) || "smart",
+    lock: Boolean(locked),
+    raw,
+    fill: {
+      id: String(row.id || `gmgn-live-${tx || "x"}-${token}-${ts}`),
+      ts,
+      chain,
+      side: side === "sell" ? "sell" : "buy",
+      usd: Number(row.usd || 0),
+      amount: Number(row.amount || 0),
+      price: row.price == null ? null : Number(row.price) || null,
+      token,
+      symbol: String(row.symbol || "???").trim(),
+      name: String(row.name || row.symbol || "???").trim(),
+      mcap: row.mcap == null ? null : Number(row.mcap) || null,
+      liquidity: null,
+      change24: null,
+      pairUrl: row.pairUrl ? String(row.pairUrl) : null,
+      imageUrl: row.imageUrl ? String(row.imageUrl) : null,
+      wallet: row.wallet ? String(row.wallet) : null,
+      handle: row.handle ? String(row.handle) : "wallet",
+      followers: null,
+      profileUrl: row.profileUrl ? String(row.profileUrl) : null,
+      rank: null,
+      tx: tx || null,
+      firstBuy: Boolean(row.firstBuy) || Number(row.ooc) === 1,
+      flags,
+      source: "dexscreener",
+      smartKind: (row.smartKind as SmartKind) || "smart",
+    },
   };
 }
 
@@ -89,7 +96,7 @@ export function isGmgnOverlayPaste(raw: string) {
   return /__egGmgnHooked|__egFollow\d|function asFollowTrade|function formRelay|function pageCopy|v5\.\d overlay/.test(raw);
 }
 
-export function ingestGmgnPaste(raw: unknown): { buys: number; hint: string } {
+export async function ingestGmgnPaste(raw: unknown): Promise<{ buys: number; hint: string }> {
   const text = typeof raw === "string" ? raw.trim() : "";
   if (text && isGmgnOverlayPaste(text)) {
     return {
@@ -105,30 +112,57 @@ export function ingestGmgnPaste(raw: unknown): { buys: number; hint: string } {
       payload = text.slice(start, end + 1);
     }
   }
-  const n = ingestGmgnTrackPayload(payload);
+  const n = await ingestGmgnTrackPayload(payload);
   if (n) return { buys: n, hint: `${n} buy 20dk havuza yazıldı` };
   return { buys: 0, hint: "JSON değil — {\"type\":\"eg-gmgn-track\",\"fills\":[...]} veya dump yapıştır" };
 }
 
-export function ingestGmgnTrackPayload(raw: unknown) {
+async function commitGmgnFills(raw: unknown) {
   const rows = parseGmgnTrackFills(raw);
-  const fills = rows.map((r) => asFill(r)).filter(Boolean) as TapeFill[];
-  if (!fills.length) return 0;
-  const before = new Set(readPool(WINDOW_MIN).map((row) => row.tx || row.id));
+  const drafts = rows.map((r) => asFill(r)).filter(Boolean) as Draft[];
+  if (!drafts.length) return 0;
+  const open = drafts.filter((d) => !d.lock);
+  if (open.length) {
+    const detected = await detectDexChains(open.map((d) => d.fill.token));
+    for (const draft of open) {
+      const hit = detected.get(draft.fill.token.toLowerCase());
+      if (!hit) continue;
+      draft.fill = { ...draft.fill, chain: hit, flags: [...new Set([...draft.fill.flags, "chain-locked"])] };
+      draft.lock = true;
+    }
+  }
+  const fills = drafts.map((d) => d.fill);
+  const before = new Set(readPool(WINDOW_MIN).map((row) => fillKey(row)));
   ingestPool(fills, WINDOW_MIN);
-  const buys = readPool(WINDOW_MIN).filter((row) => !before.has(row.tx || row.id) && row.side === "buy").length;
-  if (!buys) return 0;
+  const fresh = readPool(WINDOW_MIN).filter((row) => !before.has(fillKey(row)) && row.side === "buy");
+  const summary = drafts
+    .filter((d) => d.fill.side === "buy")
+    .map((d) => `${d.fill.symbol} ${d.fill.chain}${d.raw ? `/${d.raw}` : ""}`)
+    .join(", ");
+  noteGmgn(fresh.length ? `havuz +${fresh.length}: ${summary}` : `havuz 0 yeni: ${summary}`);
+  if (!fresh.length) return 0;
   logEvent({
     level: "info",
     event: "gmgn_follow",
     outcome: "ok",
     source: "gmgn",
-    count: buys,
-    detail: `track köprü ${buys} buy / ${fills.length} fill`,
+    count: fresh.length,
+    detail: `track ${fresh.length}/${fills.length} ${summary}`.slice(0, 240),
   });
-  markSource("gmgn_follow", true, buys);
+  markSource("gmgn_follow", true, fresh.length);
   window.dispatchEvent(new Event("eg-gmgn-track"));
-  return buys;
+  return fresh.length;
+}
+
+let ingestTail = Promise.resolve();
+
+export function ingestGmgnTrackPayload(raw: unknown) {
+  const run = ingestTail.then(() => commitGmgnFills(raw));
+  ingestTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 let lastClipAt = 0;
@@ -142,7 +176,7 @@ export async function ingestGmgnClipboard() {
     const text = await navigator.clipboard.readText();
     if (isGmgnOverlayPaste(text)) return 0;
     if (!/eg-gmgn-track|"follow"/.test(text)) return 0;
-    return ingestGmgnTrackPayload(text);
+    return await ingestGmgnTrackPayload(text);
   } catch {
     return 0;
   }
@@ -157,7 +191,7 @@ export async function pullGmgnIngest() {
     if (!res.ok) return 0;
     const json = (await res.json()) as { fills?: unknown; until?: number };
     if (typeof json.until === "number") ingestSince = json.until;
-    return ingestGmgnTrackPayload(json.fills || []);
+    return await ingestGmgnTrackPayload(json.fills || []);
   } catch {
     return 0;
   }
@@ -170,14 +204,19 @@ export function installGmgnTrackBridge() {
   window.name = "earlygem";
   window.addEventListener("message", (ev) => {
     if (!EG_ORIGINS.has(ev.origin)) return;
-    const data = ev.data as { type?: string; fills?: unknown };
-    if (data?.type !== "eg-gmgn-track") return;
-    const buys = ingestGmgnTrackPayload(data.fills);
-    try {
-      const src = ev.source as Window | null;
-      if (src) src.postMessage({ type: "eg-gmgn-track-ack", count: buys }, ev.origin);
-    } catch {
-      /* gmgn may already have navigated */
+    const data = ev.data as { type?: string; fills?: unknown; line?: string };
+    if (data?.type === "eg-gmgn-track-log") {
+      if (data.line) noteGmgn(String(data.line));
+      return;
     }
+    if (data?.type !== "eg-gmgn-track") return;
+    void ingestGmgnTrackPayload(data.fills).then((buys) => {
+      try {
+        const src = ev.source as Window | null;
+        if (src) src.postMessage({ type: "eg-gmgn-track-ack", count: buys }, ev.origin);
+      } catch {
+        /* gmgn may already have navigated */
+      }
+    });
   });
 }

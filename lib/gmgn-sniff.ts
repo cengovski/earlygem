@@ -1,8 +1,7 @@
 export const GMGN_SNIFF_ORIGIN = "https://earlygem-live.vercel.app";
 
-/** Paste into the logged-in gmgn.ai Track tab console. Do not hard-reload after paste. */
-export const GMGN_SNIFF_JS = String.raw`(() => {
-  const EG = "https://earlygem-live.vercel.app";
+const GMGN_SNIFF_TEMPLATE = String.raw`(() => {
+  const EG = "__EG_ORIGIN__";
   const bag = (window.__egGmgn = window.__egGmgn || {
     urls: [],
     ws: [],
@@ -12,9 +11,11 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     peek: null,
     wsMeta: null,
   });
-  if (!bag.seen) {
-    bag.seen = new Set((bag.trades || []).map(function (t) { return t.tx || t.id; }).filter(Boolean));
+  function legKey(t) {
+    return String((t && t.tx) || "") + "|" + String((t && t.token) || "").toLowerCase() + "|" + String((t && t.side) || "");
   }
+  bag.seen = new Set((bag.trades || []).map(legKey).filter(function (k) { return k && k !== "||"; }));
+  bag.seenV = 56;
 
   function shortUrl(u) {
     return String(u || "").split("?")[0];
@@ -48,17 +49,84 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     el.textContent = String(text || "");
   }
 
-  function chainOf(row, url) {
-    const s = String((row && (row.n || row.chain || row.network || row.chain_id)) || url || "").toLowerCase();
-    if (s.includes("sol")) return "solana";
-    if (s.includes("bsc") || s.includes("bnb")) return "bsc";
-    if (s.includes("base")) return "base";
-    if (s.includes("eth")) return "ethereum";
-    if (s.includes("robin") || s.includes("rh")) return "robinhood";
-    if (s.includes("monad")) return "monad";
-    const token = String((row && (row.a || row.token || "")) || "");
-    if (token.indexOf("0x") === 0) return "ethereum";
-    return "solana";
+  var CHAIN = {
+    sol: "solana", solana: "solana",
+    bsc: "bsc", bnb: "bsc",
+    base: "base",
+    eth: "ethereum", ethereum: "ethereum",
+    rh: "robinhood", rhood: "robinhood", robinhood: "robinhood",
+    monad: "monad", mon: "monad",
+    arb: "arbitrum", arbitrum: "arbitrum",
+    hyper: "hyperevm", hype: "hyperevm", hyperevm: "hyperevm",
+    mega: "megaeth", megaeth: "megaeth",
+    xlayer: "xlayer", okx: "xlayer",
+    stable: "stable",
+    arc: "arc"
+  };
+
+  function mapChain(raw) {
+    var s = String(raw || "").toLowerCase().trim();
+    if (!s || s === "0") return "";
+    if (CHAIN[s]) return CHAIN[s];
+    var parts = s.split(/[^a-z0-9]+/);
+    for (var i = 0; i < parts.length; i++) {
+      if (CHAIN[parts[i]]) return CHAIN[parts[i]];
+    }
+    return "";
+  }
+
+  var pageCache = { at: 0, v: "" };
+  function pageChain() {
+    var now = Date.now();
+    if (now - pageCache.at < 5000) return pageCache.v;
+    var v = "";
+    try {
+      var q = new URLSearchParams(location.search);
+      v = mapChain(q.get("chain") || q.get("network") || "");
+    } catch (e) {}
+    if (!v) {
+      var seg = String(location.pathname || "").split("/").filter(Boolean)[0] || "";
+      v = mapChain(seg);
+    }
+    if (!v) {
+      try {
+        var el = document.querySelector("[data-chain],[aria-selected='true'][data-chain]");
+        if (el) v = mapChain(el.getAttribute("data-chain") || "");
+      } catch (e2) {}
+    }
+    if (!v) {
+      try {
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i) || "";
+          if (!/chain/i.test(k) || /device|fp_did|token|key|secret/i.test(k)) continue;
+          var stored = String(localStorage.getItem(k) || "").replace(/"/g, "").slice(0, 32);
+          var hit = mapChain(stored);
+          if (hit) { v = hit; break; }
+        }
+      } catch (e3) {}
+    }
+    pageCache = { at: now, v: v };
+    return v;
+  }
+
+  function rawChain(row) {
+    var keys = ["n", "chain", "cn", "ch", "network", "chain_id", "ci"];
+    for (var i = 0; i < keys.length; i++) {
+      var v = row && row[keys[i]];
+      if (v != null && String(v) && String(v) !== "0") return String(v);
+    }
+    return "";
+  }
+
+  function chainOf(row) {
+    var raw = rawChain(row);
+    var mapped = mapChain(raw);
+    var page = mapped ? "" : pageChain();
+    var token = String((row && (row.a || row.ba || row.token || "")) || "");
+    var chain = mapped || page || "";
+    var guessed = !chain;
+    if (!chain && token.indexOf("0x") !== 0 && token.indexOf("0X") !== 0) chain = "solana";
+    return { chain: chain, chainRaw: raw, fromPage: Boolean(page) && !mapped, guessed: guessed };
   }
 
   function asFollowTrade(row) {
@@ -76,11 +144,15 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     const maker = row.m || row.ma || row.maker || "";
     const tags = Array.isArray(row.t) ? row.t : [];
     const handle = row.nm || row.tun || row.un || (maker ? String(maker).slice(0, 8) : "wallet");
+    const net = chainOf(row);
     const firstBuy = row.firstBuy === true || Number(row.ooc) === 1;
     return {
-      id: "gmgn-live-" + (tx || token) + "-" + ts,
+      id: "gmgn-live-" + (tx || "x") + "-" + token + "-" + ts,
       ts: ts,
-      chain: chainOf(row, ""),
+      chain: net.chain,
+      chainRaw: net.chainRaw,
+      fromPage: net.fromPage,
+      guessed: net.guessed,
       side: side,
       usd: usd,
       amount: Number(row.ta || row.token_amount || row.amount || 0),
@@ -112,54 +184,7 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     for (var i = 0; i < (bag.trades || []).length; i++) {
       if (bag.trades[i].side === "buy") buys.push(bag.trades[i]);
     }
-    return { type: "eg-gmgn-track", fills: buys.slice(0, 20) };
-  }
-
-  function copyBuys() {
-    var payload = buyPayload();
-    if (!payload.fills.length) return false;
-    if (pageCopy(JSON.stringify(payload))) {
-      bag.copied = payload.fills.length;
-      return true;
-    }
-    return false;
-  }
-
-  function shoot(win, payload) {
-    if (!win || win === window) return false;
-    var blank = false;
-    try {
-      var href = String(win.location.href || "");
-      blank = !href || href === "about:blank" || href.indexOf("about:") === 0 || /gmgn\.ai/i.test(href);
-    } catch (e) {
-      try {
-        win.postMessage(payload, "*");
-        try { win.postMessage(payload, EG); } catch (e0) {}
-        return true;
-      } catch (e2) {
-        return false;
-      }
-    }
-    if (blank) {
-      try { if (win !== window.opener) win.close(); } catch (e3) {}
-      return false;
-    }
-    try {
-      win.postMessage(payload, "*");
-      try { win.postMessage(payload, EG); } catch (e0) {}
-      return true;
-    } catch (e4) {
-      return false;
-    }
-  }
-
-  function postEg(payload) {
-    var sent = false;
-    try {
-      if (shoot(window.opener, payload)) sent = true;
-    } catch (e) {}
-    bag.posted = sent;
-    return sent;
+    return { type: "eg-gmgn-track", fills: buys.slice(0, 40) };
   }
 
   function radarAlive(win) {
@@ -172,22 +197,49 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     }
   }
 
-  function ship(buys) {
-    if (!buys || !buys.length) return false;
-    var msg = { type: "eg-gmgn-track", fills: buys };
-    if (!radarAlive(bag.radar)) return false;
-    try {
-      bag.radar.postMessage(msg, "*");
-      try { bag.radar.postMessage(msg, EG); } catch (e0) {}
-      bag.shipped = (bag.shipped || 0) + buys.length;
-      return true;
-    } catch (e) {
-      return false;
+  function targets() {
+    var list = [];
+    function add(win) {
+      if (!radarAlive(win)) return;
+      if (list.indexOf(win) >= 0) return;
+      list.push(win);
+    }
+    try { add(window.opener); } catch (e) {}
+    add(bag.radar);
+    return list;
+  }
+
+  function egLog(line) {
+    var text = String(line || "");
+    console.log(text);
+    var msg = { type: "eg-gmgn-track-log", line: text };
+    var list = targets();
+    for (var i = 0; i < list.length; i++) {
+      try { list[i].postMessage(msg, "*"); } catch (e) {}
     }
   }
 
-  if (!window.__egAckHook) {
-    window.__egAckHook = true;
+  function ship(buys) {
+    if (!buys || !buys.length) return false;
+    var msg = { type: "eg-gmgn-track", fills: buys };
+    var list = targets();
+    if (!list.length) return false;
+    var ok = false;
+    for (var i = 0; i < list.length; i++) {
+      try {
+        list[i].postMessage(msg, "*");
+        try { list[i].postMessage(msg, EG); } catch (e0) {}
+        ok = true;
+      } catch (e) {
+        egLog("[eg] postMessage " + (e && e.message ? e.message : e));
+      }
+    }
+    if (ok) bag.shipped = (bag.shipped || 0) + buys.length;
+    return ok;
+  }
+
+  if (!window.__egAckHook56) {
+    window.__egAckHook56 = true;
     window.addEventListener("message", function (ev) {
       if (!ev.data || ev.data.type !== "eg-gmgn-track-ack") return;
       bag.acked = ev.data.count;
@@ -196,14 +248,37 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     });
   }
 
+  var queue = [];
+  var flushTimer = 0;
+  function flushQueue() {
+    flushTimer = 0;
+    if (!queue.length) return;
+    var batch = queue;
+    queue = [];
+    var shipped = false;
+    try { shipped = ship(batch); } catch (e) { egLog("[eg] ship " + (e && e.message ? e.message : e)); }
+    var symbols = [];
+    for (var i = 0; i < batch.length; i++) {
+      var b = batch[i];
+      symbols.push((b.symbol || "?") + " " + (b.chainRaw || (b.fromPage ? b.chain : "?")) + (b.chain ? "/" + b.chain : ""));
+    }
+    var line = "[eg] TRACK batch " + batch.length + " · " + symbols.join(", ") + " · " + (shipped ? "postMessage" : "radar yok");
+    egLog(line);
+    banner(line);
+  }
+  function enqueue(buys) {
+    for (var i = 0; i < buys.length; i++) queue.push(buys[i]);
+    if (flushTimer) return;
+    flushTimer = setTimeout(flushQueue, 450);
+  }
+
   function push(fills) {
     if (!fills || !fills.length) return;
     const fresh = [];
     for (var i = 0; i < fills.length; i++) {
       const f = fills[i];
-      const k = f.tx || f.id;
+      const k = legKey(f);
       if (k && bag.seen.has(k)) continue;
-      if (k && (bag.trades || []).some(function (t) { return (t.tx || t.id) === k; })) continue;
       if (k) bag.seen.add(k);
       fresh.push(f);
     }
@@ -211,46 +286,25 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
     bag.trades = fresh.concat(bag.trades).slice(0, 500);
     const buys = fresh.filter(function (f) { return f.side === "buy"; });
     if (!buys.length) return;
-    const shipped = ship(buys);
-    if (!shipped) postEg({ type: "eg-gmgn-track", fills: buys });
-    const hint = bag.acked != null
-      ? "radar OK " + bag.acked
-      : shipped
-        ? "postMessage radar"
-        : "radar penceresi yok — overlay'i tekrar yapıştır";
-    const line =
-      "[eg] TRACK fill " +
-      fresh.length +
-      " · buy " +
-      buys.length +
-      " · toplam " +
-      bag.trades.length +
-      " · " +
-      (buys[0].symbol || "") +
-      " buy $" +
-      Math.round(buys[0].usd || 0) +
-      " · " +
-      hint;
-    console.log(line, buys[0] && buys[0].token);
-    banner(line + "\n" + (buys[0].token || ""));
+    enqueue(buys);
   }
 
   function ingestWs(body) {
     var data = body;
     if (typeof body === "string") {
-      try {
-        data = JSON.parse(body);
-      } catch (e) {
-        return;
-      }
+      try { data = JSON.parse(body); } catch (e) { return; }
     }
     if (!data || typeof data !== "object") return;
     if (data.channel !== "following_wallet_activity") return;
     const rows = Array.isArray(data.data) ? data.data : [];
     const fills = [];
     for (var i = 0; i < rows.length; i++) {
-      const t = asFollowTrade(rows[i]);
-      if (t) fills.push(t);
+      try {
+        const t = asFollowTrade(rows[i]);
+        if (t) fills.push(t);
+      } catch (e) {
+        egLog("[eg] fill " + (e && e.message ? e.message : e));
+      }
     }
     if (fills.length) push(fills);
   }
@@ -272,10 +326,7 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
 
   function asTrade(row, url) {
     const t = asFollowTrade(row);
-    if (t) {
-      t.chain = chainOf(row, url);
-      return t;
-    }
+    if (t) return t;
     return null;
   }
 
@@ -299,11 +350,7 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
   function pick(body, url) {
     var data = body;
     if (typeof body === "string") {
-      try {
-        data = JSON.parse(body);
-      } catch (e) {
-        return [];
-      }
+      try { data = JSON.parse(body); } catch (e) { return []; }
     }
     const out = [];
     walk(data, url, out, 0);
@@ -316,14 +363,8 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
         return typeof xhr.response === "string" ? xhr.response : JSON.stringify(xhr.response);
       }
     } catch (e) {}
-    try {
-      return xhr.responseText;
-    } catch (e) {
-      try {
-        return JSON.stringify(xhr.response);
-      } catch (e2) {
-        return "";
-      }
+    try { return xhr.responseText; } catch (e) {
+      try { return JSON.stringify(xhr.response); } catch (e2) { return ""; }
     }
   }
 
@@ -339,42 +380,47 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
       if (isPoll(u) && fills.length) console.log("[eg] polling fill", fills.length);
       push(fills);
     } catch (e) {
-      console.warn("[eg] parse", e);
+      egLog("[eg] parse " + (e && e.message ? e.message : e));
     }
   }
 
   function attachFollow(ws, url) {
-    if (!ws || ws.__egFollow55) return;
-    ws.__egFollow55 = true;
+    if (!ws || ws.__egFollow56) return;
+    ws.__egFollow56 = true;
     const u = shortUrl(url || ws.url || "");
     if (u && bag.ws.indexOf(u) < 0) bag.ws.push(u);
-    console.log("[eg] v5.5 follow attach", u || "ws");
+    egLog("[eg] v5.6 follow attach " + (u || "ws"));
     try {
       ws.addEventListener("message", function (ev) {
         ingestWs(ev.data);
       });
-    } catch (e) {}
+    } catch (e) {
+      egLog("[eg] ws listener " + (e && e.message ? e.message : e));
+    }
   }
 
   const OWS = window.WebSocket;
-  const pSend = OWS.prototype.send;
-  if (!window.__egGmgnHookedV55) {
-    window.__egGmgnHookedV55 = true;
+  if (!window.__egGmgnHookedV56) {
+    window.__egGmgnHookedV56 = true;
+    const prevSend = OWS.prototype.send;
     OWS.prototype.send = function (data) {
       attachFollow(this, this.url);
-      return pSend.call(this, data);
+      return prevSend.call(this, data);
     };
     try {
       const desc = Object.getOwnPropertyDescriptor(OWS.prototype, "onmessage");
-      if (desc && desc.set) {
+      if (desc && desc.set && !desc.set.__eg56) {
+        const prevSet = desc.set;
+        const wrapped = function (fn) {
+          attachFollow(this, this.url);
+          return prevSet.call(this, fn);
+        };
+        wrapped.__eg56 = true;
         Object.defineProperty(OWS.prototype, "onmessage", {
           configurable: true,
           enumerable: desc.enumerable,
           get: desc.get,
-          set: function (fn) {
-            attachFollow(this, this.url);
-            return desc.set.call(this, fn);
-          },
+          set: wrapped,
         });
       }
     } catch (e) {}
@@ -428,7 +474,6 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
       urls: bag.urls,
       ws: bag.ws,
       posted: bag.posted || false,
-      copied: bag.copied || 0,
       acked: bag.acked == null ? null : bag.acked,
       tradeCount: bag.trades.length,
       trades: bag.trades.slice(0, 40),
@@ -442,14 +487,24 @@ export const GMGN_SNIFF_JS = String.raw`(() => {
   };
 
   try {
-    bag.radar = window.open(EG + "/", "earlygem");
-  } catch (e) {}
-  banner(radarAlive(bag.radar)
-    ? "v5.5 takildi — Track YENILEME. Buy postMessage, form/fetch yok."
-    : "v5.5 — popup yok. earlygem sekmesini açık tut, overlay'i tekrar yapıştır.");
-  console.log("[eg] v5.5 takildi — YENİLEME. form-action yok, postMessage");
-  return radarAlive(bag.radar)
-    ? "[eg] v5.5 — Track yenileme, buy postMessage"
-    : "[eg] v5.5 — radar penceresi açılmadı";
+    if (radarAlive(window.opener)) bag.radar = window.opener;
+    else bag.radar = window.open(EG + "/tape", "earlygem");
+  } catch (e) {
+    egLog("[eg] radar penceresi " + (e && e.message ? e.message : e));
+  }
+  var opened = radarAlive(bag.radar) || radarAlive(window.opener);
+  var hello = opened
+    ? "v5.6 takildi — batch + ag tespiti. Eski overlay varsa Track'i bir kez yenile."
+    : "v5.6 — radar penceresi yok. earlygem /tape acik kalsin.";
+  banner(hello);
+  egLog("[eg] " + hello);
+  return hello;
 })();
 `;
+
+export function gmgnSniffSource(origin = GMGN_SNIFF_ORIGIN) {
+  const safe = /^https?:\/\/[a-z0-9.:-]+$/i.test(origin) ? origin.replace(/\/$/, "") : GMGN_SNIFF_ORIGIN;
+  return GMGN_SNIFF_TEMPLATE.split("__EG_ORIGIN__").join(safe);
+}
+
+export const GMGN_SNIFF_JS = gmgnSniffSource();

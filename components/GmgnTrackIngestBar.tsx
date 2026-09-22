@@ -8,8 +8,8 @@ export function GmgnTrackIngestBar() {
   const [open, setOpen] = useState(false);
   const [paste, setPaste] = useState("");
 
-  function ingest(raw: string) {
-    const out = ingestGmgnPaste(raw);
+  async function ingest(raw: string) {
+    const out = await ingestGmgnPaste(raw);
     setHint(out.hint);
     if (out.buys) setPaste("");
     return out.buys;
@@ -24,7 +24,7 @@ export function GmgnTrackIngestBar() {
         onClick={async () => {
           try {
             const text = await navigator.clipboard.readText();
-            const n = ingest(text);
+            const n = await ingest(text);
             if (!n) setOpen(true);
           } catch {
             setOpen(true);
@@ -50,14 +50,16 @@ export function GmgnTrackIngestBar() {
             onChange={(e) => setPaste(e.target.value)}
             onPaste={(e) => {
               const text = e.clipboardData.getData("text");
-              if (text && ingest(text)) e.preventDefault();
+              if (!text) return;
+              e.preventDefault();
+              void ingest(text);
             }}
             placeholder='{"type":"eg-gmgn-track","fills":[...]} veya dump JSON'
           />
           <button
             type="button"
             className="rounded-md bg-accent px-2 py-1 text-[#16140c]"
-            onClick={() => ingest(paste)}
+            onClick={() => void ingest(paste)}
           >
             havuza yaz
           </button>

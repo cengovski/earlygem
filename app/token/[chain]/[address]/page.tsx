@@ -10,7 +10,7 @@ import { TokenLinks } from "@/components/TokenLinks";
 import { explorerToken, shortAddr, usd } from "@/lib/format";
 import type { ChainId } from "@/lib/types";
 
-const CHAINS: ChainId[] = ["robinhood", "solana", "base", "bsc", "ethereum", "monad"];
+const CHAINS: ChainId[] = ["robinhood", "solana", "base", "bsc", "ethereum", "monad", "arbitrum", "hyperevm", "megaeth", "xlayer", "stable", "arc", "unknown"];
 
 export default function TokenPage() {
   const params = useParams<{ chain: string; address: string }>();

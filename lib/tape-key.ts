@@ -6,7 +6,7 @@ function person(row: TapeFill) {
 }
 
 export function fillKey(row: TapeFill) {
-  if (row.tx) return `tx:${row.tx.toLowerCase()}`;
+  if (row.tx) return `tx:${row.tx.toLowerCase()}:${row.token.toLowerCase()}:${row.side}`;
   return [
     "ca",
     row.token.toLowerCase(),
@@ -17,11 +17,17 @@ export function fillKey(row: TapeFill) {
   ].join(":");
 }
 
+function lockedChain(row: TapeFill) {
+  return row.flags.includes("chain-locked");
+}
+
 function mergeFill(a: TapeFill, b: TapeFill): TapeFill {
   const base = SRC_RANK[buyerSource(b)] > SRC_RANK[buyerSource(a)] ? b : a;
   const other = base === a ? b : a;
+  const chain = lockedChain(a) && !lockedChain(b) ? a.chain : lockedChain(b) && !lockedChain(a) ? b.chain : base.chain === "unknown" ? other.chain : base.chain;
   return {
     ...base,
+    chain,
     flags: [...new Set([...a.flags, ...b.flags])],
     usd: Math.max(a.usd || 0, b.usd || 0),
     mcap: [a.mcap, b.mcap].filter((n): n is number => typeof n === "number" && n > 0).sort((x, y) => y - x)[0] || null,

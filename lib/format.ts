@@ -1,3 +1,4 @@
+import { chainLabelOf, dexSlug } from "./gmgn-chain";
 import type { ChainId } from "./types";
 
 export function usd(n: number | null | undefined): string {
@@ -46,12 +47,7 @@ export function shortAddr(addr: string | null | undefined, n = 4): string {
 }
 
 export function chainLabel(chain: ChainId): string {
-  if (chain === "robinhood") return "RH";
-  if (chain === "solana") return "SOL";
-  if (chain === "base") return "BASE";
-  if (chain === "bsc") return "BSC";
-  if (chain === "monad") return "MON";
-  return "ETH";
+  return chainLabelOf(chain);
 }
 
 export function explorerWallet(chain: ChainId, addr: string): string {
@@ -60,19 +56,24 @@ export function explorerWallet(chain: ChainId, addr: string): string {
   if (chain === "base") return `https://basescan.org/address/${addr}`;
   if (chain === "bsc") return `https://bscscan.com/address/${addr}`;
   if (chain === "monad") return `https://monadvision.com/address/${addr}`;
-  return `https://etherscan.io/address/${addr}`;
+  if (chain === "arbitrum") return `https://arbiscan.io/address/${addr}`;
+  if (chain === "ethereum") return `https://etherscan.io/address/${addr}`;
+  return dexUrl(chain, addr);
 }
 
 export function explorerToken(chain: ChainId, addr: string): string {
   if (chain === "solana") return `https://solscan.io/token/${addr}`;
   if (chain === "robinhood") return `https://robinhoodchain.blockscout.com/token/${addr}`;
   if (chain === "monad") return `https://monadvision.com/token/${addr}`;
-  return `https://dexscreener.com/${chain}/${addr}`;
+  if (chain === "arbitrum") return `https://arbiscan.io/token/${addr}`;
+  if (chain === "ethereum") return `https://etherscan.io/token/${addr}`;
+  return dexUrl(chain, addr);
 }
 
 export function dexUrl(chain: ChainId, addr: string, pairUrl?: string | null): string {
   if (pairUrl) return pairUrl;
-  const slug = chain === "robinhood" ? "robinhood" : chain;
+  const slug = dexSlug(chain);
+  if (!slug) return `https://dexscreener.com/search?q=${encodeURIComponent(addr)}`;
   return `https://dexscreener.com/${slug}/${addr}`;
 }
 

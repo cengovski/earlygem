@@ -48,13 +48,31 @@ function withPool(bundle: RadarBundle & { meta: RadarMeta }, incoming: typeof bu
 let mcapBusy = false;
 let mcapAt = 0;
 
+function overlayMcaps(latest: TapeFill[], hydrated: TapeFill[]) {
+  const byToken = new Map<string, TapeFill>();
+  for (const row of hydrated) byToken.set(`${row.chain}:${row.token.toLowerCase()}`, row);
+  return latest.map((row) => {
+    const hit = byToken.get(`${row.chain}:${row.token.toLowerCase()}`);
+    if (!hit) return row;
+    return {
+      ...row,
+      mcap: hit.mcap ?? row.mcap,
+      liquidity: hit.liquidity ?? row.liquidity,
+      change24: hit.change24 ?? row.change24,
+      symbol: row.symbol && row.symbol !== "???" ? row.symbol : hit.symbol,
+      name: row.name || hit.name,
+    };
+  });
+}
+
 async function refreshMcaps(tape: TapeFill[]) {
   if (mcapBusy || Date.now() - mcapAt < 12_000) return readPool(WINDOW_MIN);
   mcapBusy = true;
   try {
-    await runAlertPass(tape);
+    await runAlertPass(readPool(WINDOW_MIN));
     mcapAt = Date.now();
-    return writePool(await hydrateFills(readPool(WINDOW_MIN), 30));
+    const hydrated = await hydrateFills(tape, 30);
+    return writePool(overlayMcaps(readPool(WINDOW_MIN), hydrated));
   } finally {
     mcapBusy = false;
   }

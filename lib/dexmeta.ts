@@ -1,5 +1,6 @@
 import type { AlertHit } from "./alert-msg";
 import { logHttpFailure } from "./log";
+import { dexSlug } from "./gmgn-chain";
 import type { ChainId, TapeFill } from "./types";
 import { ALERT_MCAP_TTL_MS } from "./window";
 
@@ -54,8 +55,9 @@ function noteDexFault(url: string, detail: string, status?: number, err?: unknow
 }
 
 async function fetchDexBatch(chain: ChainId, tokens: string[]) {
-  if (!tokens.length) return;
-  const url = `https://api.dexscreener.com/tokens/v1/${chain}/${tokens.join(",")}`;
+  const slug = dexSlug(chain);
+  if (!slug || !tokens.length) return;
+  const url = `https://api.dexscreener.com/tokens/v1/${slug}/${tokens.join(",")}`;
   const hold = (ms: number) => {
     const until = Date.now() + ms;
     for (const token of tokens) missUntil.set(key(chain, token), until);
