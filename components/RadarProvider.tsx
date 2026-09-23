@@ -6,6 +6,7 @@ import { markFeeds } from "@/lib/health";
 import { installBrowserFaultHooks, logEvent, onLog, recentLogs, type LogEvent } from "@/lib/log";
 import { hydrateFills } from "@/lib/dexmeta";
 import { ingestPool, readPool, writePool } from "@/lib/pool";
+import { noteTapeFills, noteTraders } from "@/lib/wallet-pool";
 import { bustRadarCache, fetchRadarBundle } from "@/lib/radar";
 import type { RadarBundle, RadarMeta } from "@/lib/store";
 import { runAlertPass } from "@/lib/alert-engine";
@@ -42,7 +43,9 @@ function withTape<T extends RadarBundle & { meta: RadarMeta }>(bundle: T, tape: 
 
 function withPool(bundle: RadarBundle & { meta: RadarMeta }, incoming: typeof bundle.tape) {
   const stamped = attachRosterFlags([...(incoming || []), ...(bundle.solTape || [])], bundle.traders || []);
-  return withTape(bundle, ingestPool(stamped, WINDOW_MIN));
+  const tape = ingestPool(stamped, WINDOW_MIN);
+  noteTraders(bundle.traders || []);
+  return withTape(bundle, tape);
 }
 
 let mcapBusy = false;
@@ -93,6 +96,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const cached = readPool(WINDOW_MIN);
+    noteTapeFills(cached);
     if (!cached.length) return;
     setBundle({
       traders: [],

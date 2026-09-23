@@ -4,7 +4,7 @@ FOMO early gem radar. Tüm feed istekleri **tarayıcıdan / senin IP’nden** gi
 
 ## Akış
 
-1. `/admin` — GMGN, Binance, FOMO, CabalSpy, Telegram vb. key’leri yaz. `localStorage`’da kalır, sunucuya gitmez. Takip listesi (Nansen + elle Solana) GMGN `address/name/emoji` JSON olarak export edilir; gmgn.ai/follow’a yapıştır.
+1. `/admin` — GMGN, Binance, FOMO, CabalSpy, Telegram vb. key’leri yaz. `localStorage`’da kalır, sunucuya gitmez. `/wallets` havuzu Pulse, Binance, Nansen, FOMO, pump, Cabalspy, MadeOnSol, Solana Tracker ve tape cüzdanlarını biriktirir. Aynı adres bir kez durur; Solana ve EVM ayrıdır. GMGN `address/name/emoji` JSON ağ başına export edilir; gmgn.ai/follow’a o ağa yapıştır.
 2. Radar her ~25 sn kaynakları tarayıcıdan çeker. GMGN iki ayak: **VPS** (`/api/gmgn`, key 2) ve **PC** (doğrudan `openapi.gmgn.ai`, key 1), sırayla. 429 yalnız o ayağı soğutur. Opera PC ayağını keser; Chrome kullan. Termux `keys.json` içinde `gmgn`, `gmgn2`, `gmgnPem` (follow Track imzası), `gmgnProxy` (`https://…/api/gmgn`). OpenAPI `follow_wallet` kota/ban olunca tape o ayağı soğutur. Canlı Track, giriş yapılmış gmgn.ai sekmesinden gelir (çerez sunucuya gitmez). `/tape` CONNECT gmgn sekmesini açıp v5.6 enjekte etmeyi dener ve hatayı sayfadaki loga yazar. CSP fetch, form ve çapraz köken `eval`’i keserse Track’i bir kez yenileyip F12 yapıştır. Overlay buy’ları 450 ms batch ile `postMessage` atar; ağ `n` / sayfa / DexScreener ile çözülür, bilinmeyen `0x` ETH sayılmaz.
 3. Fill’ler **20 dakikalık havuza** yazılır (`eg_10m_pool`). Aynı tx / cüzdan+token+usd çakışmaları elenir. DexScreener MC tape satırına basılır ve Telegram için ~25 sn’de bir yenilenir; $250k altı küme izlenir, bandı geçince gider.
 4. Tape bu havuzu basar.

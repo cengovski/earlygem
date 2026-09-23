@@ -167,9 +167,7 @@ async function hit(url: string, init: RequestInit, source: string) {
   }
 }
 
-async function pullCabal(key: string) {
-  const job = CABAL_ROTATE[cabalAt % CABAL_ROTATE.length];
-  cabalAt += 1;
+async function pullCabalJob(key: string, job: { chain: string; type: string }) {
   const url = `${CABAL}/transactions/latest?blockchain=${job.chain}&type=${job.type}&limit=40`;
   const res = await hit(url, { headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } }, "cabalspy");
   if (!res) {
@@ -209,6 +207,48 @@ async function pullCabal(key: string) {
   }
   markSource("cabalspy", fills.length > 0, fills.length);
   return { fills, traders };
+}
+
+async function pullCabal(key: string) {
+  const job = CABAL_ROTATE[cabalAt % CABAL_ROTATE.length];
+  cabalAt += 1;
+  return pullCabalJob(key, job);
+}
+
+/** Every Cabal chain plus MadeOnSol and Solana Tracker. Harvest button only. */
+export async function harvestExtraFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {
+  const keys = clientExtraKeys();
+  const parts: Array<{ fills: TapeFill[]; traders: Trader[] }> = [];
+  if (keys.cabalspy) {
+    for (const job of CABAL_ROTATE) {
+      parts.push(
+        await pullCabalJob(keys.cabalspy, job).catch((err) => {
+          logHttpFailure({ event: "cabalspy", source: "cabalspy", url: CABAL, err });
+          return { fills: [], traders: [] };
+        }),
+      );
+    }
+  }
+  if (keys.madeonsol) {
+    parts.push(
+      await pullMadeOnSol(keys.madeonsol).catch((err) => {
+        logHttpFailure({ event: "madeonsol", source: "madeonsol", url: "https://madeonsol.com/api/v1/kol/feed", err });
+        return { fills: [], traders: [] };
+      }),
+    );
+  }
+  if (keys.soltrack) {
+    parts.push(
+      await pullSolTrack(keys.soltrack).catch((err) => {
+        logHttpFailure({ event: "soltrack", source: "soltrack", url: "https://data.solanatracker.io/trades/whales", err });
+        return { fills: [], traders: [] };
+      }),
+    );
+  }
+  return {
+    fills: parts.flatMap((p) => p.fills),
+    traders: parts.flatMap((p) => p.traders),
+  };
 }
 
 async function pullMadeOnSol(key: string) {

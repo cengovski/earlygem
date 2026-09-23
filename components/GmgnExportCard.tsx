@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { chainLabel } from "@/lib/format";
 import {
+  exportChainLabel,
   followedWallets,
   followCounts,
   GMGN_IMPORT_MAX,
   gmgnExportJson,
+  type ExportChain,
   type FollowedWallet,
 } from "@/lib/gmgn-export";
 
@@ -29,46 +31,54 @@ async function copyText(text: string) {
   }
 }
 
-export function GmgnExportCard({ watchSol, nansenAt }: { watchSol?: string; nansenAt?: number }) {
+export function GmgnExportCard({ rev }: { rev?: number }) {
   const [hint, setHint] = useState("");
   const [open, setOpen] = useState(false);
-  const wallets = useMemo(() => followedWallets(), [watchSol, nansenAt]);
+  const [wallets, setWallets] = useState<FollowedWallet[]>([]);
+
+  useEffect(() => {
+    const load = () => setWallets(followedWallets());
+    load();
+    window.addEventListener("eg-wallets", load);
+    window.addEventListener("storage", load);
+    return () => {
+      window.removeEventListener("eg-wallets", load);
+      window.removeEventListener("storage", load);
+    };
+  }, [rev]);
+
   const counts = useMemo(() => followCounts(wallets), [wallets]);
   const bulk = useMemo(() => gmgnExportJson(wallets, { withChain: true }), [wallets]);
 
   async function copyRows(rows: FollowedWallet[], label: string, withChain: boolean) {
     if (!rows.length) {
-      setHint("takip listesi boş — Nansen çek veya Solana kutusuna cüzdan yaz");
+      setHint("havuz boş — Cüzdanlar sayfasından çek veya radarı açık bırak");
       return "";
     }
     const json = gmgnExportJson(rows, { withChain });
     const ok = await copyText(json);
     const n = Math.min(rows.length, GMGN_IMPORT_MAX);
-    const extra = rows.length > GMGN_IMPORT_MAX ? ` · tavan ${GMGN_IMPORT_MAX}` : "";
+    const extra = rows.length > GMGN_IMPORT_MAX ? ` · tavan ${GMGN_IMPORT_MAX}, en yeni adresler` : "";
     setHint(ok ? `${label}: ${n} cüzdan panoda${extra}` : `${label}: kopya izni yok, json kutusundan al${extra}`);
     return json;
   }
 
   return (
-    <div className="mt-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4">
-      <p className="text-sm font-medium">GMGN bulk export</p>
+    <div className="mt-4 max-w-3xl space-y-3 rounded-xl border border-line bg-surface p-4">
+      <p className="text-sm font-medium">GMGN dışa aktar</p>
       <p className="text-xs text-mute">
-        Tüm takip kuyruğu: elle Solana listesi + biriken Nansen roster. GMGN OpenAPI follow listesine yazmaz;{" "}
+        Havuzdaki adresler. Aynı cüzdan bir kez durur; Solana ile EVM karışmaz. Dosyayı{" "}
         <a className="text-accent hover:underline" href="https://gmgn.ai/follow" target="_blank" rel="noreferrer">
           gmgn.ai/follow
         </a>{" "}
-        bulk import JSON’u yapıştır (ağ başına ayrı daha temiz). En fazla {GMGN_IMPORT_MAX} adres. Tape, API key hesabındaki listeyi `follow_wallet` ile okur.
+        sayfasında o ağın bulk import kutusuna yapıştır. Ağ başına ayrı dosya daha temiz. Ağsız EVM listesini GMGN’de seçeceğin ağa yapıştır. En fazla {GMGN_IMPORT_MAX} adres.
       </p>
       <p className="text-xs text-mute">
-        {wallets.length} cüzdan
-        {counts.length ? ` · ${counts.map((c) => `${chainLabel(c.chain)} ${c.n}`).join(" · ")}` : ""}
+        {wallets.length} satır
+        {counts.length ? ` · ${counts.map((c) => `${exportChainLabel(c.chain)} ${c.n}`).join(" · ")}` : ""}
       </p>
       <div className="flex flex-wrap gap-2">
-        <button
-          className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]"
-          type="button"
-          onClick={() => copyRows(wallets, "tümü", true)}
-        >
+        <button className="rounded-md bg-accent px-3 py-1 text-sm text-[#16140c]" type="button" onClick={() => copyRows(wallets, "tümü", true)}>
           tümünü kopyala
         </button>
         <button
@@ -76,7 +86,7 @@ export function GmgnExportCard({ watchSol, nansenAt }: { watchSol?: string; nans
           type="button"
           onClick={() => {
             if (!wallets.length) {
-              setHint("takip listesi boş");
+              setHint("havuz boş");
               return;
             }
             download("earlygem-gmgn-follow.json", bulk);
@@ -101,23 +111,23 @@ export function GmgnExportCard({ watchSol, nansenAt }: { watchSol?: string; nans
               type="button"
               onClick={async () => {
                 const rows = wallets.filter((w) => w.chain === c.chain);
-                const json = await copyRows(rows, chainLabel(c.chain), false);
-                if (json) download(`earlygem-gmgn-follow-${c.chain}.json`, json);
+                const json = await copyRows(rows, chainFileLabel(c.chain), false);
+                if (json) download(`earlygem-gmgn-${c.chain}.json`, json);
               }}
             >
-              {chainLabel(c.chain)} {c.n}
+              {exportChainLabel(c.chain)} {c.n}
             </button>
           ))}
         </div>
       ) : null}
       {open ? (
-        <textarea
-          className="h-40 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[11px]"
-          readOnly
-          value={bulk}
-        />
+        <textarea className="h-40 w-full rounded-md border border-line bg-[#12110c] px-2 py-1 font-mono text-[11px]" readOnly value={bulk} />
       ) : null}
       {hint ? <p className="text-xs text-mute">{hint}</p> : null}
     </div>
   );
+}
+
+function chainFileLabel(chain: ExportChain) {
+  return chain === "evm" ? "EVM ağsız" : chainLabel(chain);
 }

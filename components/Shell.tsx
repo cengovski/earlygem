@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/whales", label: "Whales" },
   { href: "/alerts", label: "Alert" },
   { href: "/admin", label: "Admin" },
+  { href: "/wallets", label: "Cüzdanlar" },
   { href: "/find", label: "Cüzdan bul" },
   { href: "/logs", label: "Log" },
 ];

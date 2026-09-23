@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { GmgnExportCard } from "@/components/GmgnExportCard";
@@ -10,7 +11,9 @@ import { loadClientKeys, saveClientKeys, type ClientKeys } from "@/lib/client-ke
 import { chainLabel, explorerWallet, shortAddr } from "@/lib/format";
 import { loadNansenCache, nansenChainCounts, pullNansenSmart, type NansenCache } from "@/lib/nansen";
 import { sendTelegram, telegramConfigured } from "@/lib/telegram";
+import { noteTraders } from "@/lib/wallet-pool";
 import { DEFAULT_RULE, loadRule, saveRule, type AlertRule } from "@/lib/watch";
+import { watchTraders } from "@/lib/watchlist";
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
@@ -146,7 +149,8 @@ export default function AdminPage() {
         onSubmit={(e) => {
           e.preventDefault();
           saveClientKeys(keys);
-          setMsg("takip listesi bu tarayıcıya yazıldı — GMGN cüzdan turunda döner");
+          noteTraders(watchTraders());
+          setMsg("takip listesi havuza yazıldı");
         }}
       >
         <p className="text-sm font-medium">Solana takip listesi</p>
@@ -176,7 +180,11 @@ export default function AdminPage() {
       >
         <p className="text-sm font-medium">Nansen API</p>
         <p className="text-xs text-mute">
-          Resmi uç: POST /api/v1/smart-money/dex-trades · son 24s · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / 30D / 90D / 180D / Fund · min $200 · 5 kredi / sayfa. Sayfa 1000 işlem. Günlük otomatik 2 sayfa, «şimdi çek» 3. Liste 21 gün birikir (tavan 2000, GMGN import tavanı). GMGN’e API ile cüzdan yazılmaz — JSON’u gmgn.ai/follow bulk import’a yapıştır; tape zaten o hesaptaki follow_wallet akışını okur.
+          Resmi uç: POST /api/v1/smart-money/dex-trades · son 24s · Solana + Base + Ethereum + BNB + Robinhood · Smart Trader / 30D / 90D / 180D / Fund · min $200 · 5 kredi / sayfa. Sayfa 1000 işlem. Günlük otomatik 2 sayfa, «şimdi çek» 3. Liste 21 gün birikir (tavan 2000). Çekim havuza da yazılır. GMGN dosyası{" "}
+          <Link href="/wallets" className="text-accent hover:underline">
+            Cüzdanlar
+          </Link>{" "}
+          sayfasında, ağ başına.
         </p>
         <label className="block text-sm">
           API key
@@ -211,6 +219,7 @@ export default function AdminPage() {
                 const n = out.cache?.wallets.length || 0;
                 const added = out.cache?.added ?? 0;
                 const pages = out.cache?.pages ?? 1;
+                noteTraders(out.traders);
                 let copied = false;
                 try {
                   await navigator.clipboard.writeText(gmgnExportJson(followedWallets(), { withChain: true }));
@@ -219,7 +228,7 @@ export default function AdminPage() {
                   copied = false;
                 }
                 setMsg(
-                  `nansen: ${n} cüzdan (+${added} yeni · ${pages} sayfa) · ${nansenChainCounts(out.cache?.wallets || []) || "ağ yok"} · kredi ${out.cache?.creditsRemaining ?? "?"}${copied ? " · GMGN JSON panoda, gmgn.ai/follow’a yapıştır" : " · aşağıdaki export’tan kopyala"}`,
+                  `nansen: ${n} cüzdan (+${added} yeni · ${pages} sayfa) · ${nansenChainCounts(out.cache?.wallets || []) || "ağ yok"} · kredi ${out.cache?.creditsRemaining ?? "?"} · havuza yazıldı${copied ? " · GMGN JSON panoda" : " · Cüzdanlar export’undan kopyala"}`,
                 );
               }
             }}
@@ -264,13 +273,13 @@ export default function AdminPage() {
                 </table>
               </div>
             ) : null}
-            <p className="text-[11px] text-mute">Kayıt: bu tarayıcı localStorage `eg_nansen_smart_v2`. 21 gün birikir, 2000 tavan. Üstteki Solana kutusuna yazılmaz. GMGN’e otomatik eklenmez — export JSON’u follow sayfasına yapıştır.</p>
+            <p className="text-[11px] text-mute">Kayıt: bu tarayıcı localStorage `eg_nansen_smart_v2` ve cüzdan havuzu `eg_wallet_pool_v1`. 21 gün birikir, 2000 tavan. GMGN’e otomatik eklenmez — Cüzdanlar sayfasından ağ başına JSON al.</p>
           </div>
         ) : (
           <p className="text-xs text-mute">henüz çekim yok — şimdi çek</p>
         )}
       </form>
-      <GmgnExportCard watchSol={keys.watchSol} nansenAt={nansenInfo?.at} />
+      <GmgnExportCard rev={nansenInfo?.at} />
       <form
         className="mt-4 max-w-md space-y-3 rounded-xl border border-line bg-surface p-4"
         onSubmit={(e) => {

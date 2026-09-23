@@ -46,6 +46,7 @@ function chainFromBn(id: string | undefined): ChainId | null {
   if (v === "1") return "ethereum";
   if (v === "10143" || v === "CT_10143") return "monad";
   if (v === "4663" || v === "CT_4663") return "robinhood";
+  if (v === "42161" || v === "CT_42161") return "arbitrum";
   return null;
 }
 
@@ -178,7 +179,7 @@ function toFill(row: BnTrade, kind: "smart" | "kol"): TapeFill | null {
   };
 }
 
-function traderFromWallet(row: BnWallet, kind: "smart" | "kol"): Trader | null {
+function traderFromWallet(row: BnWallet, kind: "smart" | "kol", chain?: ChainId | null): Trader | null {
   const addr = row.walletAddress || row.address;
   if (!addr) return null;
   const handle = row.twitter || row.twitterName || addr.slice(0, 8);
@@ -215,7 +216,7 @@ function traderFromWallet(row: BnWallet, kind: "smart" | "kol"): Trader | null {
     lastTs: Date.now(),
     kind: kind === "kol" ? "kol" : tagged.kind === "noise" ? "smart" : tagged.kind,
     smartScore: Math.max(tagged.smartScore, kind === "kol" ? 75 : 60),
-    smartReasons: ["src:binance"],
+    smartReasons: chain ? ["src:binance", `chain:${chain}`] : ["src:binance"],
   };
 }
 
@@ -238,11 +239,11 @@ export function parseBinancePayloads(rows: Record<string, Record<string, unknown
     if (fill) fills.push(fill);
   }
   for (const row of boardRows(rows.smart_board)) {
-    const t = traderFromWallet(row, "smart");
+    const t = traderFromWallet(row, "smart", "bsc");
     if (t) traders.push(t);
   }
   for (const row of boardRows(rows.kol_board)) {
-    const t = traderFromWallet(row, "kol");
+    const t = traderFromWallet(row, "kol", "solana");
     if (t) traders.push(t);
   }
   return {
@@ -250,6 +251,48 @@ export function parseBinancePayloads(rows: Record<string, Record<string, unknown
     traders,
     code: Number(rows.smart_trades?.code ?? rows.kol_trades?.code ?? rows.smart_board?.code ?? 0),
   };
+}
+
+export type BnHarvestWallet = { address: string; chain: ChainId | null; handle: string };
+
+const HARVEST_BOARDS = ["56", "1", "8453", "CT_501", "42161", "10143", "4663"];
+
+/** Button-only. Hot radar JOBS stay BSC + Solana so the tick budget does not grow. */
+export async function harvestBinanceWallets(): Promise<{ wallets: BnHarvestWallet[]; skip: string | null }> {
+  if (!binanceConfigured()) return { wallets: [], skip: "key yok" };
+  if (Date.now() < binanceCoolUntil) return { wallets: [], skip: "soğuma" };
+  const wallets: BnHarvestWallet[] = [];
+  for (const trackerType of ["1", "2"]) {
+    const payload = await signedGet("/api/v1/dex/market/address-tracker/trades", { trackerType });
+    const trades = ((payload?.data as { trades?: BnTrade[] } | undefined)?.trades) || [];
+    for (const row of trades) {
+      if (!row.walletAddress) continue;
+      wallets.push({
+        address: row.walletAddress,
+        chain: chainFromBn(row.binanceChainId),
+        handle: row.walletAddress.slice(0, 8),
+      });
+    }
+  }
+  for (const binanceChainId of HARVEST_BOARDS) {
+    const payload = await signedGet("/api/v1/dex/market/leaderboard/list", {
+      binanceChainId,
+      timeFrame: "1",
+      sortBy: "1",
+      limit: "50",
+    });
+    const chain = chainFromBn(binanceChainId);
+    for (const row of boardRows(payload)) {
+      const address = row.walletAddress || row.address;
+      if (!address) continue;
+      wallets.push({
+        address,
+        chain,
+        handle: row.twitter || row.twitterName || address.slice(0, 8),
+      });
+    }
+  }
+  return { wallets, skip: null };
 }
 
 export async function fetchBinanceFeeds(): Promise<{ fills: TapeFill[]; traders: Trader[] }> {

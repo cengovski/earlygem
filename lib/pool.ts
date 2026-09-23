@@ -3,6 +3,7 @@ import { overlayCachedDex } from "./dexmeta";
 import { persistGet, persistSet } from "./persist";
 import { uniqueFills } from "./tape-key";
 import type { TapeFill } from "./types";
+import { noteTapeFills } from "./wallet-pool";
 import { WINDOW_MIN } from "./window";
 
 const KEY = "eg_10m_pool";
@@ -37,6 +38,11 @@ function prune(rows: TapeFill[], windowMin = WINDOW_MIN) {
 
 /** Merge incoming fills into the 20-minute browser pool, drop collisions, persist. */
 export function ingestPool(incoming: TapeFill[], windowMin = WINDOW_MIN) {
+  try {
+    noteTapeFills(incoming);
+  } catch {
+    /* wallet pool must not break the tape */
+  }
   const next = prune([...load(), ...incoming], windowMin);
   save(next);
   return next;
