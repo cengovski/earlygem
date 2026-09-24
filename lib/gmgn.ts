@@ -295,7 +295,7 @@ async function hitLane(lane: Lane, path: string, params: URLSearchParams, signat
     const ms = Date.now() - started;
     const msg = err instanceof Error ? err.message : "fail";
     cool(lane, /failed to fetch/i.test(msg) ? 120_000 : 20_000);
-    logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", err, ms, detail: `${lane} ${viaProxy ? "proxy" : "direct"} ${msg}` });
+    logHttpFailure({ url: upstream, event: "gmgn", source: "gmgn", err, ms, detail: `${lane} ${viaProxy ? "proxy" : "direct"}` });
     return null;
   }
 }

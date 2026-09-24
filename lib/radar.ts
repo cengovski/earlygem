@@ -136,10 +136,12 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   }
 
   const errors: string[] = [];
+  const t0 = Date.now();
+  const feedsP = withTimeout(fetchExternalFeeds(), 14_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
   const [status, tradersRaw, dexWatch] = await Promise.all([
     fetchPulseStatus().catch(() => null),
     fetchPulseTraders().catch(() => [] as Trader[]),
-    fetchSolWatch().catch(() => []),
+    withTimeout(fetchSolWatch().catch(() => []), 8_000, []),
   ]);
   const pulseIndex = traderIndex(tradersRaw);
   const [discoverSeed, tapeRaw] = await Promise.all([
@@ -182,7 +184,7 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
     })),
   );
 
-  const feeds = await withTimeout(fetchExternalFeeds(), 16_000, { fills: [] as TapeFill[], traders: [] as Trader[] });
+  const feeds = await feedsP;
   traders = mergeTraders(traders, feeds.traders);
   const solTape = uniqueFills(attachRosterFlags(feeds.fills.filter(keepFill), traders)).sort((a, b) => b.ts - a.ts);
   const tape = uniqueFills(attachRosterFlags(pulseTape, traders));
@@ -190,7 +192,8 @@ export async function fetchRadarBundle(opts?: { force?: boolean }): Promise<Rada
   if (solTape.length) logEvent({ level: "info", event: "sol_tape", outcome: "ok", count: solTape.length, detail: "gmgn+feeds" });
 
   const rawGems = rankGems([...gemsFromSwaps(discoverSeed.filter((g) => !g.isStock), tape), ...solGems]);
-  const gems = await withTimeout(attachGmgnSecurity(rawGems, gmgnCooling() ? 0 : 1), 8_000, rawGems);
+  const left = 17_000 - (Date.now() - t0);
+  const gems = left < 500 ? rawGems : await withTimeout(attachGmgnSecurity(rawGems, gmgnCooling() ? 0 : 1), left, rawGems);
   const featured = featuredGems(gems, 6);
   const merged = uniqueFills([...tape, ...solTape]).sort((a, b) => b.ts - a.ts).slice(0, 400);
   const smartTape = merged.filter((r) => isWatchedKind(r.smartKind)).slice(0, 80);

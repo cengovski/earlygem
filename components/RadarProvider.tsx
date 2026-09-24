@@ -88,6 +88,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
   const [tick, setTick] = useState(0);
   const lastOk = useRef(Date.now());
   const started = useRef(0);
+  const hangNoted = useRef(false);
 
   const bump = useCallback(() => {
     bustRadarCache();
@@ -134,6 +135,7 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let alive = true;
     started.current = Date.now();
+    hangNoted.current = false;
     setLoading(true);
     fetchRadarBundle({ force: true })
       .then((next) => {
@@ -171,15 +173,17 @@ export function RadarProvider({ children }: { children: React.ReactNode }) {
     const watch = window.setInterval(() => {
       const now = Date.now();
       if (loading && now - started.current > HANG_MS) {
-        logEvent({
-          level: "error",
-          event: "radar",
-          outcome: "error",
-          kind: "timeout",
-          detail: `hang>${HANG_MS}ms`,
-        });
-        setLoading(false);
-        bump();
+        if (!hangNoted.current) {
+          hangNoted.current = true;
+          logEvent({
+            level: "error",
+            event: "radar",
+            outcome: "error",
+            kind: "timeout",
+            detail: `hang>${HANG_MS}ms`,
+          });
+          setLoading(false);
+        }
         return;
       }
       if (!loading && now - lastOk.current > STALE_RELOAD_MS) bump();

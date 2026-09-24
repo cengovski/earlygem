@@ -125,13 +125,14 @@ function persistFault(row: LogEvent) {
   if (!isFault(row) || typeof window === "undefined") return;
   const prev = loadFaults();
   const t = Date.parse(row.ts) || Date.now();
+  const windowMs = row.kind === "connection" ? 15 * 60_000 : 120_000;
   const dup = prev.find(
     (p) =>
       p.source === row.source &&
       p.event === row.event &&
       p.kind === row.kind &&
-      p.url === row.url &&
-      Math.abs(t - (Date.parse(p.ts) || 0)) < 120_000,
+      (row.kind === "connection" || p.url === row.url) &&
+      Math.abs(t - (Date.parse(p.ts) || 0)) < windowMs,
   );
   if (dup) return;
   const next = [row, ...prev].slice(0, FAULT_MAX);
@@ -144,6 +145,14 @@ export function logEvent(entry: Omit<LogEvent, "ts">): LogEvent {
   const kind = entry.kind || inferKind(entry);
   const source = entry.source || sourceFromUrl(entry.url) || (entry.event !== "fetch" ? entry.event : undefined);
   const row: LogEvent = { ts: new Date().toISOString(), ...entry, url, kind, source };
+  if (
+    kind === "connection" &&
+    entry.detail !== "offline" &&
+    typeof navigator !== "undefined" &&
+    navigator.onLine === false
+  ) {
+    return row;
+  }
   RING.unshift(row);
   if (RING.length > MAX) RING.pop();
   persistFault(row);

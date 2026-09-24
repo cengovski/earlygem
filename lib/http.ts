@@ -34,7 +34,7 @@ export async function getJson<T>(url: string, init?: RequestInit & { retries?: n
           ...extraHeaders(url),
           ...(init?.headers || {}),
         },
-        signal: init?.signal ?? AbortSignal.timeout(14_000),
+        signal: init?.signal ?? AbortSignal.timeout(8_000),
       });
       const ms = Date.now() - started;
       if (res.status === 429 || res.status >= 500) {
@@ -80,7 +80,8 @@ export async function getJson<T>(url: string, init?: RequestInit & { retries?: n
         ms: Date.now() - started,
         detail: `${lastDetail} attempt=${attempt}`,
       });
-      if (attempt < retries) {
+      const dead = /failed to fetch|networkerror|load failed|timeout|aborted|abort/i.test(lastDetail);
+      if (!dead && attempt < retries) {
         await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
         continue;
       }
